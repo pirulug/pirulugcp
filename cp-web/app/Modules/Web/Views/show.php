@@ -57,6 +57,8 @@ $dbg = $debugData ?? [];
     </a>
     <a href="/ftp?domain_id=<?= (int)$d["id"] ?>" class="btn btn-sm btn-outline-secondary" title="Cuentas FTP">
       <i class="bi bi-folder-symlink"></i>
+    <a href="/web/domain/<?= (int)$d["id"] ?>/edit" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap ms-1" title="Editar Alias y Redirección del Dominio">
+      <i class="bi bi-pencil me-1"></i> Editar
     </a>
     <a href="/web" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap ms-1">
       <i class="bi bi-arrow-left me-1"></i> Volver

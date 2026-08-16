@@ -98,6 +98,36 @@ class Database {
     }
 
     try {
+      $db->exec("ALTER TABLE domains ADD COLUMN aliases TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE domains ADD COLUMN redirect_enabled INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE domains ADD COLUMN redirect_type TEXT DEFAULT 'custom'");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE domains ADD COLUMN redirect_target TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE domains ADD COLUMN redirect_code INTEGER NOT NULL DEFAULT 301");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
       $db->exec("ALTER TABLE domain_git ADD COLUMN composer_install INTEGER NOT NULL DEFAULT 1");
     } catch (PDOException $e) {
       // Columna ya existe

@@ -136,6 +136,8 @@ $router->get("/web", [WebController::class, "index"]);
 $router->get("/web/create", [WebController::class, "create"]);
 $router->post("/web/store", [WebController::class, "store"]);
 $router->get("/web/domain/{id}", [WebController::class, "show"]);
+$router->get("/web/domain/{id}/edit", [WebController::class, "edit"]);
+$router->post("/web/domain/{id}/edit", [WebController::class, "update"]);
 $router->post("/web/domain/{id}/env", [WebController::class, "saveEnv"]);
 $router->post("/web/domain/{id}/tinker", [WebController::class, "runTinker"]);
 $router->get("/web/domain/{id}/debug/clear", [WebController::class, "clearDebug"]);

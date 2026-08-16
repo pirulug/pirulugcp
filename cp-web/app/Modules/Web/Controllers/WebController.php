@@ -820,6 +820,78 @@ class WebController {
     exit();
   }
 
+  public function edit($id) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT d.*, u.username FROM domains d LEFT JOIN users u ON d.user_id = u.id WHERE d.id = ?");
+    $stmt->execute([(int)$id]);
+    $domain = $stmt->fetch();
+
+    if (!$domain) {
+      View::setFlash("danger", "Dominio no encontrado.");
+      header("Location: /web");
+      exit();
+    }
+
+    View::render("Modules/Web/Views/edit", [
+      "pageTitle" => "Editar Dominio Web - " . $domain["domain"],
+      "domain"    => $domain
+    ]);
+  }
+
+  public function update($id) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT d.*, u.username FROM domains d LEFT JOIN users u ON d.user_id = u.id WHERE d.id = ?");
+    $stmt->execute([(int)$id]);
+    $domain = $stmt->fetch();
+
+    if (!$domain) {
+      View::setFlash("danger", "Dominio no encontrado.");
+      header("Location: /web");
+      exit();
+    }
+
+    $username = $domain["username"] ?? "admin";
+    $domainName = $domain["domain"];
+
+    $aliases = trim($_POST["aliases"] ?? "");
+    $redirectEnabled = !empty($_POST["redirect_enabled"]) ? 1 : 0;
+    $redirectType = trim($_POST["redirect_type"] ?? "custom");
+    $redirectTarget = trim($_POST["redirect_target"] ?? "");
+    $redirectCode = (int)($_POST["redirect_code"] ?? 301);
+
+    // Actualizar Base de Datos
+    $updateStmt = $db->prepare("UPDATE domains SET aliases = ?, redirect_enabled = ?, redirect_type = ?, redirect_target = ?, redirect_code = ? WHERE id = ?");
+    $updateStmt->execute([$aliases, $redirectEnabled, $redirectType, $redirectTarget, $redirectCode, (int)$id]);
+
+    // Aplicar Aliases en Servidor Web si cambiaron
+    if ($aliases !== ($domain["aliases"] ?? "")) {
+      try {
+        Engine::execute("pirulu-web", ["set-aliases", $username, $domainName, $aliases]);
+        // Si SSL estaba activo, renovar certificado con los nuevos alias
+        if (!empty($domain["ssl_enabled"])) {
+          Engine::execute("pirulu-ssl", ["issue", $username, $domainName]);
+        }
+      } catch (\Exception $e) {}
+    }
+
+    // Aplicar o remover redirecciones en Nginx
+    try {
+      if ($redirectEnabled) {
+        Engine::execute("pirulu-web", ["set-redirect", $username, $domainName, $redirectType, $redirectTarget, (string)$redirectCode]);
+      } else {
+        Engine::execute("pirulu-web", ["remove-redirect", $username, $domainName]);
+      }
+    } catch (\Exception $e) {}
+
+    View::setFlash("success", "Configuración y redirección del dominio " . $domainName . " actualizadas correctamente.");
+    header("Location: /web");
+    exit();
+  }
+
   public function delete($id) {
     Auth::requireAuth();
     $db = Database::getConnection();

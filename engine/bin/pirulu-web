@@ -343,6 +343,113 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"message\":\"SSL deshabilitado para $DOMAIN\"}"
         ;;
 
+    set-redirect)
+        REDIRECT_TYPE="$4"        # to_www | to_non_www | custom
+        TARGET_URL="$5"           # https://destino.com or empty
+        REDIRECT_CODE="${6:-301}" # 301 | 302 | 307 | 308
+
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$REDIRECT_TYPE" ] && usage
+        log_info "Configurando redireccion para $DOMAIN ($REDIRECT_TYPE -> $TARGET_URL [$REDIRECT_CODE])"
+
+        REDIRECT_CONF="/etc/nginx/conf.d/redirect_${DOMAIN}.conf"
+        mkdir -p /etc/nginx/conf.d
+
+        if [ "$REDIRECT_TYPE" = "to_www" ]; then
+            cat <<EOF > "$REDIRECT_CONF"
+# Redireccion automatica a www.$DOMAIN
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+    return $REDIRECT_CODE https://www.$DOMAIN\$request_uri;
+}
+EOF
+        elif [ "$REDIRECT_TYPE" = "to_non_www" ]; then
+            cat <<EOF > "$REDIRECT_CONF"
+# Redireccion automatica a dominio raiz $DOMAIN
+server {
+    listen 80;
+    listen [::]:80;
+    server_name www.$DOMAIN;
+    return $REDIRECT_CODE https://$DOMAIN\$request_uri;
+}
+EOF
+        elif [ "$REDIRECT_TYPE" = "custom" ] && [ -n "$TARGET_URL" ]; then
+            cat <<EOF > "$REDIRECT_CONF"
+# Redireccion personalizada de $DOMAIN hacia $TARGET_URL
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN www.$DOMAIN;
+    return $REDIRECT_CODE $TARGET_URL\$request_uri;
+}
+EOF
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"Redireccion configurada para $DOMAIN\"}"
+        ;;
+
+    remove-redirect)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Eliminando redireccion para $DOMAIN"
+        rm -f "/etc/nginx/conf.d/redirect_${DOMAIN}.conf"
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"Redireccion removida para $DOMAIN\"}"
+        ;;
+
+    set-aliases)
+        NEW_ALIASES="$4"
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Actualizando alias para $DOMAIN ($NEW_ALIASES)"
+
+        # Formatear alias como lista separada por espacios
+        CLEAN_ALIASES=$(echo "$NEW_ALIASES" | tr '\n' ' ' | tr ',' ' ' | tr -s ' ')
+
+        DETECTED_DOCROOT=""
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            DETECTED_DOCROOT=$(grep -E '^\s*DocumentRoot\s+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | awk '{print $2}' | head -n 1)
+        fi
+        ACTIVE_DOC_ROOT="${DETECTED_DOCROOT:-$DOC_ROOT}"
+
+        # Actualizar Apache
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            CURRENT_FPM_SOCKET=$(grep -oE '/run/php/php[0-9.]+-fpm-[^"]+\.sock' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | head -n 1)
+            TPL_APACHE="${PIRULU_ROOT}/engine/templates/apache/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%|${CLEAN_ALIASES}|g" \
+                -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                -e "s|%FPM_SOCKET%|${CURRENT_FPM_SOCKET}|g" \
+                "$TPL_APACHE" > "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"
+        fi
+
+        # Actualizar Nginx
+        if [ -f "${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+            SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+
+            if [ -f "$SSL_CERT" ]; then
+                TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost-ssl.conf.tpl"
+                sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                    -e "s|%ALIASES%|${CLEAN_ALIASES}|g" \
+                    -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                    -e "s|%SSL_CERT%|${SSL_CERT}|g" \
+                    -e "s|%SSL_KEY%|${SSL_KEY}|g" \
+                    "$TPL_NGINX" > "${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+            else
+                TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost.conf.tpl"
+                sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                    -e "s|%ALIASES%|${CLEAN_ALIASES}|g" \
+                    -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                    "$TPL_NGINX" > "${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+            fi
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"Alias actualizados para $DOMAIN\"}"
+        ;;
+
     delete)
         [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
         log_info "Eliminando sitio web: $DOMAIN"

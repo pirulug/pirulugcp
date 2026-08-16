@@ -178,14 +178,12 @@ $phpList = $phpVersions ?? [];
                 <i class="bi bi-folder2-open me-1"></i> Archivos
               </a>
 
-              <!-- Boton Ajustes / Configuracion Rapida -->
-              <button type="button" 
-                      class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap flex-fill" 
-                      data-bs-toggle="modal" 
-                      data-bs-target="#modalConfigDomain<?= (int)$d["id"] ?>" 
-                      title="Ajustes de PHP y Carpeta Raíz">
-                <i class="bi bi-gear me-1"></i> Ajustes
-              </button>
+              <!-- Boton Editar Dominio, Alias y Redireccionamiento -->
+              <a href="/web/domain/<?= (int)$d["id"] ?>/edit" 
+                 class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap flex-fill" 
+                 title="Editar Alias y Redirección del Dominio">
+                <i class="bi bi-pencil me-1"></i> Editar
+              </a>
 
               <!-- Boton Git -->
               <a href="/web/git/<?= (int)$d["id"] ?>" 
