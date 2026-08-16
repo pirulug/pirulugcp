@@ -36,10 +36,18 @@ EOF
 EOF
     a2enconf pirulugcp 2>/dev/null || true
 
-    # 5. Deshabilitar sitio por defecto de Apache en puerto 80
+    # 5. Configurar restauracion de IP real para Cloudflare en Nginx
+    mkdir -p /etc/nginx/conf.d
+    if [ -f "/tmp/pirulugcp/engine/templates/nginx/cloudflare.conf.tpl" ]; then
+        cp "/tmp/pirulugcp/engine/templates/nginx/cloudflare.conf.tpl" /etc/nginx/conf.d/cloudflare.conf
+    elif [ -f "/usr/local/pirulugcp/engine/templates/nginx/cloudflare.conf.tpl" ]; then
+        cp "/usr/local/pirulugcp/engine/templates/nginx/cloudflare.conf.tpl" /etc/nginx/conf.d/cloudflare.conf
+    fi
+
+    # 6. Deshabilitar sitio por defecto de Apache en puerto 80
     a2dissite 000-default.conf 2>/dev/null || true
 
-    # 6. Iniciar y habilitar servicios
+    # 7. Iniciar y habilitar servicios
     systemctl enable nginx || true
     systemctl restart nginx || true
     systemctl enable apache2 || true

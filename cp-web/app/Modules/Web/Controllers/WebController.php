@@ -548,6 +548,32 @@ class WebController {
     $phpData = Engine::execute("pirulu-php", ["versions"]);
     $phpVersions = $phpData["versions"] ?? [];
 
+    // -------------------------------------------------------------------------
+    // SECCION: ESTADO E INSPECCION DEL CERTIFICADO SSL (LET'S ENCRYPT / CLOUDFLARE)
+    // -------------------------------------------------------------------------
+    $sslInfo = [
+      "ssl_active"            => !empty($domain["ssl_enabled"]),
+      "domain"                => $domainName,
+      "issuer"                => "Sin Certificado",
+      "subject"               => "CN=" . $domainName,
+      "valid_from"            => null,
+      "expires"               => null,
+      "days_left"             => 0,
+      "san"                   => "DNS:" . $domainName,
+      "type"                  => "Sin SSL",
+      "cloudflare_compatible" => true,
+      "cert_pem"              => "",
+      "key_pem"               => ""
+    ];
+    try {
+      $sslCheck = Engine::execute("pirulu-ssl", ["details", $domainName]);
+      if (!empty($sslCheck["status"]) && $sslCheck["status"] === "success") {
+        $sslInfo = array_merge($sslInfo, $sslCheck);
+      }
+    } catch (\Exception $e) {
+      // Ignorar fallback
+    }
+
     View::render("Modules/Web/Views/show", [
       "pageTitle"     => $domainName . " - Panel y Métricas de la Aplicación",
       "domain"        => $domain,
@@ -559,6 +585,7 @@ class WebController {
       "period"        => $period,
       "metrics"       => $metrics,
       "debugData"     => $debugData,
+      "sslInfo"       => $sslInfo,
       "docRoot"       => $docRoot,
       "webRoot"       => $webRoot,
       "rawEnv"        => $rawEnv,

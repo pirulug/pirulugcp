@@ -9,8 +9,29 @@ server {
         allow all;
     }
 
+    # Compatibilidad con Cloudflare Flexible SSL (evita bucles ERR_TOO_MANY_REDIRECTS)
+    # Si la solicitud proviene de Cloudflare encriptada (X-Forwarded-Proto https o CF-Visitor https), procesar directo
+    set $do_redirect_ssl 1;
+    if ($http_x_forwarded_proto = "https") {
+        set $do_redirect_ssl 0;
+    }
+    if ($http_cf_visitor ~* '"scheme":"https"') {
+        set $do_redirect_ssl 0;
+    }
+
     location / {
-        return 301 https://$host$request_uri;
+        if ($do_redirect_ssl = 1) {
+            return 301 https://$host$request_uri;
+        }
+
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
     }
 }
 
@@ -23,7 +44,7 @@ server {
     root %DOC_ROOT%;
     index index.php index.html index.htm;
 
-    # Certificados SSL de Let's Encrypt
+    # Certificados SSL de Let's Encrypt o Cloudflare Origin
     ssl_certificate %SSL_CERT%;
     ssl_certificate_key %SSL_KEY%;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -37,6 +58,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
     }
 
     # Entrega directa de archivos estaticos por Nginx
@@ -53,6 +77,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
     }
 
     location @fallback {
@@ -61,6 +88,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
     }
 
     location ~ /\.ht {

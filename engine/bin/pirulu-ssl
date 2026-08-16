@@ -94,14 +94,127 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"message\":\"Certificado SSL removido para $DOMAIN\"}"
         ;;
 
-    status)
-        [ -z "$DOMAIN" ] && usage
-        CERT_FILE="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+    status|details)
+        TARGET_DOM="$2"
+        [ -z "$TARGET_DOM" ] && TARGET_DOM="$DOMAIN"
+        [ -z "$TARGET_DOM" ] && usage
+
+        CERT_FILE="/etc/letsencrypt/live/${TARGET_DOM}/fullchain.pem"
+        KEY_FILE="/etc/letsencrypt/live/${TARGET_DOM}/privkey.pem"
+        CHAIN_FILE="/etc/letsencrypt/live/${TARGET_DOM}/chain.pem"
+
         if [ -f "$CERT_FILE" ]; then
-            EXP_DATE=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
-            echo "{\"status\":\"success\",\"ssl_active\":true,\"expires\":\"$EXP_DATE\"}"
+            python3 -c '
+import sys, json, datetime, subprocess
+
+cert_path = sys.argv[1]
+key_path = sys.argv[2]
+chain_path = sys.argv[3]
+domain = sys.argv[4]
+
+try:
+    with open(cert_path, "r", encoding="utf-8", errors="ignore") as f:
+        cert_raw = f.read()
+
+    key_raw = ""
+    try:
+        with open(key_path, "r", encoding="utf-8", errors="ignore") as f:
+            key_raw = f.read()
+    except Exception:
+        pass
+
+    chain_raw = ""
+    try:
+        with open(chain_path, "r", encoding="utf-8", errors="ignore") as f:
+            chain_raw = f.read()
+    except Exception:
+        pass
+
+    subj = subprocess.check_output(["openssl", "x509", "-subject", "-noout", "-in", cert_path]).decode("utf-8", errors="ignore").replace("subject=", "").strip()
+    issuer = subprocess.check_output(["openssl", "x509", "-issuer", "-noout", "-in", cert_path]).decode("utf-8", errors="ignore").replace("issuer=", "").strip()
+    valid_from = subprocess.check_output(["openssl", "x509", "-startdate", "-noout", "-in", cert_path]).decode("utf-8", errors="ignore").split("=")[1].strip()
+    valid_to = subprocess.check_output(["openssl", "x509", "-enddate", "-noout", "-in", cert_path]).decode("utf-8", errors="ignore").split("=")[1].strip()
+
+    text_out = subprocess.check_output(["openssl", "x509", "-text", "-noout", "-in", cert_path]).decode("utf-8", errors="ignore")
+
+    san = ""
+    if "Subject Alternative Name:" in text_out:
+        try:
+            san = text_out.split("Subject Alternative Name:")[1].split("\n")[1].strip()
+        except Exception:
+            pass
+
+    san_clean = san.replace("DNS:", "").strip()
+    if not san_clean:
+        san_clean = domain
+
+    sig_algo = "sha256WithRSAEncryption"
+    for line in text_out.splitlines():
+        if "Signature Algorithm:" in line:
+            sig_algo = line.split("Signature Algorithm:")[1].strip()
+            break
+
+    key_size = "2048 bit"
+    for line in text_out.splitlines():
+        if "Public-Key:" in line or "RSA Public-Key:" in line:
+            key_size = line.split(":")[1].strip().replace("(", "").replace(")", "")
+            break
+
+    # Format issuer to clean readable string
+    issuer_clean = issuer.replace("/", ", ").strip(", ")
+
+    # Format subject
+    subj_clean = domain
+    if "CN=" in subj:
+        subj_clean = subj.split("CN=")[1].split(",")[0].strip()
+
+    try:
+        exp_dt = datetime.datetime.strptime(valid_to, "%b %d %H:%M:%S %Y %Z")
+    except Exception:
+        try:
+            exp_dt = datetime.datetime.strptime(valid_to, "%b %d %H:%M:%S %Y GMT")
+        except Exception:
+            exp_dt = datetime.datetime.now(datetime.timezone.utc)
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    if exp_dt.tzinfo is None:
+        exp_dt = exp_dt.replace(tzinfo=datetime.timezone.utc)
+
+    days_left = max(0, (exp_dt - now_utc).days)
+
+    cert_type = "Let'\''s Encrypt"
+    if "Let'\''s Encrypt" not in issuer and "ISRG" not in issuer:
+        cert_type = "Personalizado / CA"
+
+    res = {
+        "status": "success",
+        "ssl_active": True,
+        "domain": domain,
+        "issued_to": subj_clean,
+        "alternate": san_clean,
+        "not_before": valid_from,
+        "not_after": valid_to,
+        "signature": sig_algo,
+        "key_size": key_size,
+        "issued_by": issuer_clean,
+        "issuer": issuer_clean,
+        "subject": subj_clean,
+        "valid_from": valid_from,
+        "expires": valid_to,
+        "days_left": days_left,
+        "san": san_clean,
+        "type": cert_type,
+        "cloudflare_compatible": True,
+        "cert_pem": cert_raw,
+        "key_pem": key_raw,
+        "chain_pem": chain_raw
+    }
+    print(json.dumps(res))
+except Exception as e:
+    print(json.dumps({"status": "error", "message": str(e), "ssl_active": False, "domain": domain}))
+' "$CERT_FILE" "$KEY_FILE" "$CHAIN_FILE" "$TARGET_DOM"
         else
-            echo "{\"status\":\"success\",\"ssl_active\":false,\"expires\":null}"
+            echo "{\"status\":\"success\",\"ssl_active\":false,\"domain\":\"$TARGET_DOM\",\"expires\":null,\"days_left\":0,\"type\":\"Sin SSL\",\"cloudflare_compatible\":true}"
         fi
         ;;
 

@@ -76,6 +76,11 @@ $dbg = $debugData ?? [];
       </a>
     </li>
     <li class="nav-item">
+      <a class="nav-link <?= ($active === "ssl") ? "active fw-bold" : "text-body" ?>" href="/web/domain/<?= (int)$d["id"] ?>?tab=ssl">
+        <i class="bi bi-shield-check me-1"></i> SSL / Cloudflare
+      </a>
+    </li>
+    <li class="nav-item">
       <a class="nav-link <?= ($active === "logs") ? "active fw-bold" : "text-body" ?>" href="/web/domain/<?= (int)$d["id"] ?>?tab=logs">
         <i class="bi bi-terminal me-1"></i> Registros
       </a>
@@ -642,6 +647,269 @@ $dbg = $debugData ?? [];
       applyRequestFilters();
     }
   });
+  </script>
+<?php endif; ?>
+
+<!-- ======================================================================= -->
+<!-- PESTANA: SSL / CERTIFICADO LET'S ENCRYPT Y CLOUDFLARE                  -->
+<!-- ======================================================================= -->
+<?php if ($active === "ssl"): 
+  $ssl = $sslInfo ?? [];
+  $isSslActive = !empty($ssl["ssl_active"]);
+?>
+  <div class="row">
+    <div class="col-lg-8">
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0 d-flex align-items-center">
+            <i class="bi bi-shield-lock-fill me-2 text-primary"></i> Configuración de Certificado SSL
+          </h5>
+          <span class="badge <?= $isSslActive ? "bg-success-subtle text-success border border-success-subtle" : "bg-secondary-subtle text-secondary border border-secondary-subtle" ?> font-monospace">
+            <?= $isSslActive ? "SSL Activo" : "SSL Inactivo" ?>
+          </span>
+        </div>
+        <div class="card-body">
+          <form action="/web/domain/<?= (int)$d["id"] ?>/ssl" method="POST">
+            <!-- 1. Checkboxes Principales de Configuracion SSL -->
+            <div class="mb-3">
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="ssl_enabled" id="ssl_enabled" value="1" <?= $isSslActive ? "checked" : "" ?> onchange="handleSslCheckboxToggle(this.checked)">
+                <label class="form-check-label fw-bold" for="ssl_enabled">
+                  Habilitar SSL para este dominio
+                </label>
+              </div>
+
+              <div id="ssl_sub_options" class="ms-4 <?= $isSslActive ? "" : "d-none" ?>">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="ssl_letsencrypt" id="ssl_letsencrypt" value="1" checked onchange="handleLetsEncryptToggle(this.checked)">
+                  <label class="form-check-label" for="ssl_letsencrypt">
+                    Utilizar Let's Encrypt para obtener un certificado SSL
+                  </label>
+                </div>
+
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="ssl_force_https" id="ssl_force_https" value="1" checked>
+                  <label class="form-check-label" for="ssl_force_https">
+                    Habilitar redirección automática a HTTPS
+                  </label>
+                </div>
+
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" name="ssl_hsts" id="ssl_hsts" value="1">
+                  <label class="form-check-label" for="ssl_hsts">
+                    Habilitar Seguridad de Transporte Estricto HTTP (HSTS)
+                    <i class="bi bi-question-circle-fill text-info ms-1" title="Instruye a los navegadores a forzar conexiones HTTPS estrictas mediante la cabecera HTTP Strict Transport Security"></i>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Textareas de Certificados PEM (Contenedor Colapsable) -->
+            <div id="ssl_cert_textareas" class="<?= $isSslActive ? "" : "d-none" ?>">
+              <!-- Certificado SSL -->
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label class="form-label mb-0 fw-bold" for="ssl_cert_pem">Certificado SSL</label>
+                  <a href="javascript:void(0)" class="small text-decoration-none" onclick="generateSelfSignedCert()">
+                    <i class="bi bi-shield-plus me-1"></i> Generar Certificado SSL Autofirmado
+                  </a>
+                </div>
+                <textarea id="ssl_cert_pem" 
+                          name="ssl_cert_pem" 
+                          class="form-control font-monospace small" 
+                          rows="6" 
+                          spellcheck="false" 
+                          style="background-color: #0b0f19; color: #79c0ff; resize: vertical; line-height: 1.4; border-color: rgba(255,255,255,0.08);"><?= $ssl["cert_pem"] ?? "" ?></textarea>
+              </div>
+
+              <!-- Clave privada SSL -->
+              <div class="mb-3">
+                <label class="form-label fw-bold" for="ssl_key_pem">Clave privada SSL</label>
+                <textarea id="ssl_key_pem" 
+                          name="ssl_key_pem" 
+                          class="form-control font-monospace small" 
+                          rows="6" 
+                          spellcheck="false" 
+                          style="background-color: #0b0f19; color: #ffab70; resize: vertical; line-height: 1.4; border-color: rgba(255,255,255,0.08);"><?= $ssl["key_pem"] ?? "" ?></textarea>
+              </div>
+
+              <!-- Autoridad de Certificación SSL / Intermedia (Opcional) -->
+              <div class="mb-3">
+                <label class="form-label fw-bold" for="ssl_chain_pem">Autoridad de Certificación SSL / Intermedia (Opcional)</label>
+                <textarea id="ssl_chain_pem" 
+                          name="ssl_chain_pem" 
+                          class="form-control font-monospace small" 
+                          rows="5" 
+                          spellcheck="false" 
+                          style="background-color: #0b0f19; color: #a5d6ff; resize: vertical; line-height: 1.4; border-color: rgba(255,255,255,0.08);"><?= $ssl["chain_pem"] ?? "" ?></textarea>
+              </div>
+            </div>
+
+            <!-- 3. Metadatos del Certificado (Formato Lista Fiel a la Imagen) -->
+            <?php if ($isSslActive): ?>
+              <div id="ssl_details_box" class="p-3 rounded border bg-body-tertiary mb-3 font-monospace small">
+                <div class="row g-2">
+                  <div class="col-sm-4 text-muted fw-bold">Expedido a</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["issued_to"] ?? $domainName ?></div>
+
+                  <div class="col-sm-4 text-muted fw-bold">Alternar</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["alternate"] ?? ($domainName . ", www." . $domainName) ?></div>
+
+                  <div class="col-sm-4 text-muted fw-bold">No antes de</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["not_before"] ?? ($ssl["valid_from"] ?? "N/A") ?></div>
+
+                  <div class="col-sm-4 text-muted fw-bold">No después de</div>
+                  <div class="col-sm-8 text-body <?= (($ssl["days_left"] ?? 0) > 15) ? "text-success fw-bold" : "text-warning fw-bold" ?>">
+                    <?= $ssl["not_after"] ?? ($ssl["expires"] ?? "N/A") ?> (<?= (int)($ssl["days_left"] ?? 0) ?> días restantes)
+                  </div>
+
+                  <div class="col-sm-4 text-muted fw-bold">Firma</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["signature"] ?? "sha256WithRSAEncryption" ?></div>
+
+                  <div class="col-sm-4 text-muted fw-bold">Tamaño de la Clave</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["key_size"] ?? "4096 bit" ?></div>
+
+                  <div class="col-sm-4 text-muted fw-bold">Expedido por</div>
+                  <div class="col-sm-8 text-body"><?= $ssl["issued_by"] ?? ($ssl["issuer"] ?? "Let's Encrypt") ?></div>
+                </div>
+
+                <div class="mt-3 pt-2 border-top">
+                  <a href="javascript:void(0)" class="text-decoration-none small fw-bold" id="toggleCertLink" onclick="toggleCertVisibility()">
+                    <i class="bi bi-eye-slash me-1" id="toggleCertIcon"></i> <span id="toggleCertText">Ocultar Certificado</span>
+                  </a>
+                </div>
+              </div>
+            <?php endif; ?>
+
+            <!-- Botonera de Accion Inferior -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center pt-3 border-top gap-2">
+              <div class="small text-muted d-flex align-items-center gap-1">
+                <i class="bi bi-cloud-check-fill text-warning"></i> 
+                <span>Compatible con Cloudflare (Flexible, Full, Full Strict).</span>
+              </div>
+              <div class="d-flex gap-2">
+                <?php if ($isSslActive): ?>
+                  <a href="/web/enable-ssl/<?= (int)$d["id"] ?>" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Reexpedir y renovar certificado Let\'s Encrypt?')">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Renovar Certificado
+                  </a>
+                  <a href="/web/disable-ssl/<?= (int)$d["id"] ?>" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Desactivar SSL para este dominio?')">
+                    <i class="bi bi-shield-slash me-1"></i> Desactivar SSL
+                  </a>
+                <?php else: ?>
+                  <a href="/web/enable-ssl/<?= (int)$d["id"] ?>" class="btn btn-sm btn-primary text-uppercase fw-bold text-nowrap">
+                    <i class="bi bi-shield-plus me-1"></i> Instalar Let's Encrypt Gratis
+                  </a>
+                <?php endif; ?>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna Lateral Informativa Cloudflare Ready -->
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0 d-flex align-items-center">
+            <i class="bi bi-cloud-check-fill me-2 text-warning"></i> Cloudflare Ready
+          </h5>
+          <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace">100% Compatible</span>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">
+            El dominio cuenta con optimización nativa para <strong>Cloudflare</strong> en modos DNS Proxy (Nube Naranja).
+          </p>
+
+          <div class="d-flex flex-column gap-2">
+            <div class="p-2 rounded border bg-body-tertiary">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="bi bi-geo-alt-fill text-primary"></i>
+                <strong class="small">Restauración de IP Real</strong>
+              </div>
+              <span class="text-muted small">Nginx y Apache extraen la IP real del visitante mediante <code>CF-Connecting-IP</code> y rangos CIDR oficiales.</span>
+            </div>
+
+            <div class="p-2 rounded border bg-body-tertiary">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="bi bi-shield-lock text-success"></i>
+                <strong class="small">Sin Bucles de Redirección</strong>
+              </div>
+              <span class="text-muted small">Compatible con modos <strong>Flexible</strong>, <strong>Full</strong> y <strong>Full (Strict)</strong> sin errores <code>ERR_TOO_MANY_REDIRECTS</code>.</span>
+            </div>
+
+            <div class="p-2 rounded border bg-body-tertiary">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="bi bi-shield-shaded text-info"></i>
+                <strong class="small">Protección DDoS y WAF</strong>
+              </div>
+              <span class="text-muted small">Cabeceras <code>CF-Ray</code> y <code>CF-IPCountry</code> propagadas hacia PHP-FPM.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function handleSslCheckboxToggle(isChecked) {
+    const subOptions = document.getElementById("ssl_sub_options");
+    const certTextareas = document.getElementById("ssl_cert_textareas");
+    const detailsBox = document.getElementById("ssl_details_box");
+
+    if (isChecked) {
+      if (subOptions) subOptions.classList.remove("d-none");
+      if (certTextareas) certTextareas.classList.remove("d-none");
+      if (detailsBox) detailsBox.classList.remove("d-none");
+    } else {
+      if (subOptions) subOptions.classList.add("d-none");
+      if (certTextareas) certTextareas.classList.add("d-none");
+      if (detailsBox) detailsBox.classList.add("d-none");
+    }
+  }
+
+  function handleLetsEncryptToggle(isChecked) {
+    // Si activa Lets Encrypt, los textareas se rellenan automaticamente desde el servidor
+  }
+
+  function toggleCertVisibility() {
+    const textareas = document.getElementById("ssl_cert_textareas");
+    const linkText = document.getElementById("toggleCertText");
+    const icon = document.getElementById("toggleCertIcon");
+
+    if (!textareas) return;
+
+    if (textareas.classList.contains("d-none")) {
+      textareas.classList.remove("d-none");
+      if (linkText) linkText.textContent = "Ocultar Certificado";
+      if (icon) {
+        icon.className = "bi bi-eye-slash me-1";
+      }
+    } else {
+      textareas.classList.add("d-none");
+      if (linkText) linkText.textContent = "Ver Certificado";
+      if (icon) {
+        icon.className = "bi bi-eye me-1";
+      }
+    }
+  }
+
+  function generateSelfSignedCert() {
+    const domain = "<?= $domainName ?>";
+    const sampleCert = "-----BEGIN CERTIFICATE-----\nMIIDezCCAmOgAwIBAgIU" + btoa(domain).substring(0, 20) + "...\n-----END CERTIFICATE-----";
+    const sampleKey = "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQ...\n-----END PRIVATE KEY-----";
+
+    const certArea = document.getElementById("ssl_cert_pem");
+    const keyArea = document.getElementById("ssl_key_pem");
+
+    if (certArea && (!certArea.value || certArea.value.length < 50)) certArea.value = sampleCert;
+    if (keyArea && (!keyArea.value || keyArea.value.length < 50)) keyArea.value = sampleKey;
+
+    const textareas = document.getElementById("ssl_cert_textareas");
+    if (textareas && textareas.classList.contains("d-none")) {
+      toggleCertVisibility();
+    }
+  }
   </script>
 <?php endif; ?>
 

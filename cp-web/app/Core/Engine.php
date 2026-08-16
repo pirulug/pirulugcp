@@ -492,6 +492,41 @@ class Engine {
       ];
     }
 
+    if ($binary === "pirulu-ssl") {
+      $domain = $args[1] ?? ($args[2] ?? "midominio.com");
+      if ($action === "status" || $action === "details") {
+        $notBefore = date("M d H:i:s Y T", strtotime("-10 days"));
+        $notAfter = date("M d H:i:s Y T", strtotime("+80 days"));
+        return [
+          "status"                => "success",
+          "ssl_active"            => true,
+          "domain"                => $domain,
+          "issued_to"             => $domain,
+          "alternate"             => $domain . ", www." . $domain,
+          "not_before"            => $notBefore,
+          "not_after"             => $notAfter,
+          "signature"             => "sha256WithRSAEncryption",
+          "key_size"              => "4096 bit",
+          "issued_by"             => "C = US, O = Let's Encrypt, CN = YR2",
+          "issuer"                => "C = US, O = Let's Encrypt, CN = YR2",
+          "subject"               => $domain,
+          "valid_from"            => $notBefore,
+          "expires"               => $notAfter,
+          "days_left"             => 80,
+          "san"                   => $domain . ", www." . $domain,
+          "type"                  => "Let's Encrypt",
+          "cloudflare_compatible" => true,
+          "cert_pem"              => "-----BEGIN CERTIFICATE-----\nMIIFbjCCA1agAwIBAgIUCmH/vYINWaqtxYDi3L9+1QzIgmYwDQYJKoZIhvcNAQEL\nBQAwMzELMAkGA1UEBhMCVVMxFjAUBgNVBAoMDUxldCdzIEVuY3J5cHQxDDAKBgNV\nBAMMA1lSMjAeFw0yNjA4MTYxODQwNTVaFw0yNjExMTQxODQwNTVaMDMxCzAJBgNV\nBAYTAlVTMRYwFAYDVQQKDA1MZXQncyBFbmNyeXB0MQwwCgYDVQQDDANZUjIwggIi\nMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC4llrPSZYAZxLCUSzAH5iwEiUG\n...\n-----END CERTIFICATE-----",
+          "key_pem"               => "-----BEGIN PRIVATE KEY-----\nMIIJQgIBADANBgkqhkiG9w0BAQEFAASCCSwwggkoAgEAAoICAQC4llrPSZYAZxLC\nUSzAH5iwEiUGRpYjLurmEUl2RyQZtAfmUicFO3xxIFyr9jaGXj4c/sQVR/hV7Da4\n...\n-----END PRIVATE KEY-----",
+          "chain_pem"             => "-----BEGIN CERTIFICATE-----\nMIIFbjCCA1agAwIBAgIUCmH/vYINWaqtxYDi3L9+1QzIgmYwDQYJKoZIhvcNAQEL\nBQAwMzELMAkGA1UEBhMCVVMxFjAUBgNVBAoMDUxldCdzIEVuY3J5cHQxDDAKBgNV\n...\n-----END CERTIFICATE-----"
+        ];
+      }
+      return [
+        "status"  => "success",
+        "message" => "Operacion SSL ejecutada exitosamente para " . $domain
+      ];
+    }
+
     return [
       "status"  => "success",
       "message" => "Operacion completada exitosamente (Modo desarrollo)"
