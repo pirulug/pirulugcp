@@ -85,6 +85,7 @@ use Pirulu\Modules\Git\Controllers\GitController;
 use Pirulu\Modules\Server\Controllers\ServerController;
 use Pirulu\Modules\Mail\Controllers\MailController;
 use Pirulu\Modules\Cron\Controllers\CronController;
+use Pirulu\Modules\Ftp\Controllers\FtpController;
 
 $router = new Router();
 
@@ -96,6 +97,13 @@ $router->get("/logout", [AuthController::class, "logout"]);
 // Rutas de Dashboard
 $router->get("/", [DashboardController::class, "index"]);
 $router->get("/dashboard", [DashboardController::class, "index"]);
+
+// Rutas de Servidor FTP (vsftpd)
+$router->get("/ftp", [FtpController::class, "index"]);
+$router->post("/ftp/store", [FtpController::class, "store"]);
+$router->post("/ftp/password", [FtpController::class, "updatePassword"]);
+$router->post("/ftp/path", [FtpController::class, "updatePath"]);
+$router->get("/ftp/delete/{id}", [FtpController::class, "delete"]);
 
 // Rutas de Servidor de Correo (Exim4 + Dovecot + Webmail)
 $router->get("/mail", [MailController::class, "index"]);

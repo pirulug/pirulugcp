@@ -90,6 +90,9 @@
                   <a href="/files?domain=<?= urlencode($d["domain"]) ?>" class="btn btn-sm btn-outline-info text-uppercase fw-bold text-nowrap" title="Explorar y subir archivos">
                     <i class="bi bi-folder2-open me-1"></i> Archivos
                   </a>
+                  <a href="/ftp?domain_id=<?= (int)$d["id"] ?>" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" title="Gestionar Cuentas FTP">
+                    <i class="bi bi-folder-symlink me-1"></i> FTP
+                  </a>
                   <a href="/web/delete/<?= (int)$d["id"] ?>" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" onclick="return confirm('Estas seguro de eliminar <?= $d["domain"] ?>?')" title="Eliminar Dominio">
                     <i class="bi bi-trash me-1"></i> Eliminar
                   </a>

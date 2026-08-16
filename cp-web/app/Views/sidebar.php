@@ -36,6 +36,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
         </a>
       </li>
 
+      <li class="sidebar-item <?= (strpos($currentUri, "/ftp") === 0) ? "active" : "" ?>">
+        <a class="sidebar-link" href="/ftp">
+          <i class="align-middle bi bi-folder-symlink"></i>
+          <span class="align-middle">Servidor FTP</span>
+        </a>
+      </li>
+
       <li class="sidebar-item <?= (strpos($currentUri, "/mail") === 0) ? "active" : "" ?>">
         <a class="sidebar-link" href="/mail">
           <i class="align-middle bi bi-envelope-at"></i>

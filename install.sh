@@ -32,6 +32,7 @@ deploy_pirulugcp_core
 setup_nginx_vhost
 install_firewall
 install_mail_stack
+install_ftp_server
 
 echo "============================================================"
 echo "    Instalacion de PiruluGCP completada exitosamente!"

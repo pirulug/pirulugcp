@@ -108,6 +108,36 @@
           </td>
         </tr>
 
+        <!-- vsftpd (Servidor FTP) -->
+        <tr>
+          <td class="ps-3 fw-bold">
+            <span class="d-inline-flex align-items-center">
+              <i class="bi bi-folder-symlink me-2 text-warning"></i>
+              <code>vsftpd</code>
+            </span>
+          </td>
+          <td>Servidor de Transferencia de Archivos FTP / FTPS (Puerto 21)</td>
+          <td>
+            <?php $ftpStatus = $services["vsftpd"] ?? "inactive"; ?>
+            <span class="badge <?= ($ftpStatus === "active") ? "bg-success-subtle text-success border border-success-subtle" : "bg-danger-subtle text-danger border border-danger-subtle" ?>">
+              <?= strtoupper($ftpStatus) ?>
+            </span>
+          </td>
+          <td class="text-end pe-3 text-nowrap">
+            <div class="d-flex justify-content-end gap-1">
+              <a href="/ftp" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap">
+                <i class="bi bi-folder-symlink me-1"></i> Gestionar
+              </a>
+              <form action="/system/action" method="POST" class="d-inline m-0">
+                <input type="hidden" name="service" value="vsftpd">
+                <button type="submit" name="action" value="restart" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap">
+                  <i class="bi bi-arrow-clockwise me-1"></i> Reiniciar
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+
         <!-- Fail2Ban -->
         <?php $f2bStatus = $services["fail2ban"] ?? "not-found"; ?>
         <?php if ($f2bStatus !== "not-found"): ?>

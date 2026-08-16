@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Gestor de Servidor FTP (vsftpd) con Usuarios Virtuales para PiruluGCP
+# ==============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+FTP_USER="$2"
+PARAM1="$3"
+PARAM2="$4"
+PARAM3="$5"
+PARAM4="$6"
+
+VSFTPD_CONF_DIR="/etc/vsftpd"
+VSFTPD_PASSWD="/etc/vsftpd/ftpd.passwd"
+VSFTPD_USERS_DIR="/etc/vsftpd/users"
+
+usage() {
+    echo "Uso: pirulu-ftp <account-add|account-del|account-passwd|account-path|status> [params...]"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+init_ftp_dirs() {
+    mkdir -p "$VSFTPD_CONF_DIR" "$VSFTPD_USERS_DIR"
+    touch "$VSFTPD_PASSWD"
+    chmod 600 "$VSFTPD_PASSWD"
+    chmod 755 "$VSFTPD_USERS_DIR"
+}
+
+hash_password_crypt() {
+    local pass="$1"
+    if command -v openssl >/dev/null 2>&1; then
+        openssl passwd -6 "$pass" 2>/dev/null
+    elif command -v mkpasswd >/dev/null 2>&1; then
+        mkpasswd -m sha-512 "$pass" 2>/dev/null
+    else
+        local salt
+        salt=$(head -c 32 /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
+        php -r "echo crypt('$pass', '\$6\$$salt\$');" 2>/dev/null
+    fi
+}
+
+account_add() {
+    local user="$FTP_USER"
+    local pass="$PARAM1"
+    local sys_user="$PARAM2"
+    local domain="$PARAM3"
+    local rel_path="$PARAM4"
+
+    [ -z "$user" ] && exit_error "Usuario FTP requerido"
+    [ -z "$pass" ] && exit_error "Contraseña requerida"
+    [ -z "$sys_user" ] && sys_user="admin"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+
+    # Sanitizar usuario
+    user=$(echo "$user" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_.-')
+    domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9.-')
+    id "$sys_user" >/dev/null 2>&1 || exit_error "El usuario Linux $sys_user no existe"
+
+    # Limpiar ruta relativa
+    rel_path=$(echo "$rel_path" | sed -e 's/^[ \t\/]*//' -e 's/[ \t\/]*$//')
+    local full_path="/home/${sys_user}/web/${domain}"
+    if [ -n "$rel_path" ]; then
+        full_path="${full_path}/${rel_path}"
+    fi
+
+    init_ftp_dirs
+    log_info "Creando cuenta FTP virtual: $user para dominio: $domain (Ruta: $full_path)"
+
+    # Crear directorio si no existe
+    mkdir -p "$full_path"
+    chown -R "${sys_user}:${sys_user}" "$full_path"
+
+    local pass_hash
+    pass_hash=$(hash_password_crypt "$pass")
+
+    # Registrar en ftpd.passwd
+    sed -i "/^${user}:/d" "$VSFTPD_PASSWD"
+    echo "${user}:${pass_hash}" >> "$VSFTPD_PASSWD"
+    chmod 600 "$VSFTPD_PASSWD"
+
+    # Crear archivo de configuración individual
+    local user_file="${VSFTPD_USERS_DIR}/${user}"
+    cat <<EOF > "$user_file"
+guest_username=${sys_user}
+local_root=${full_path}
+write_enable=YES
+anon_world_readable_only=NO
+anon_upload_enable=YES
+anon_mkdir_write_enable=YES
+anon_other_write_enable=YES
+EOF
+    chmod 644 "$user_file"
+
+    if systemctl is-active --quiet vsftpd 2>/dev/null; then
+        systemctl reload-or-restart vsftpd 2>/dev/null || true
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Cuenta FTP $user creada exitosamente\",\"ftp_user\":\"$(json_escape "$user")\",\"path\":\"$(json_escape "$full_path")\"}"
+}
+
+account_del() {
+    local user="$FTP_USER"
+    [ -z "$user" ] && exit_error "Usuario FTP requerido"
+    user=$(echo "$user" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_.-')
+
+    log_info "Eliminando cuenta FTP virtual: $user"
+
+    if [ -f "$VSFTPD_PASSWD" ]; then
+        sed -i "/^${user}:/d" "$VSFTPD_PASSWD"
+    fi
+
+    rm -f "${VSFTPD_USERS_DIR}/${user}"
+
+    echo "{\"status\":\"success\",\"message\":\"Cuenta FTP $user eliminada exitosamente\"}"
+}
+
+account_passwd() {
+    local user="$FTP_USER"
+    local new_pass="$PARAM1"
+    [ -z "$user" ] && exit_error "Usuario FTP requerido"
+    [ -z "$new_pass" ] && exit_error "Nueva contraseña requerida"
+    user=$(echo "$user" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_.-')
+
+    if [ ! -f "$VSFTPD_PASSWD" ] || ! grep -q "^${user}:" "$VSFTPD_PASSWD"; then
+        exit_error "La cuenta FTP $user no existe"
+    fi
+
+    local pass_hash
+    pass_hash=$(hash_password_crypt "$new_pass")
+
+    sed -i "/^${user}:/d" "$VSFTPD_PASSWD"
+    echo "${user}:${pass_hash}" >> "$VSFTPD_PASSWD"
+    chmod 600 "$VSFTPD_PASSWD"
+
+    log_info "Contraseña actualizada para cuenta FTP: $user"
+    echo "{\"status\":\"success\",\"message\":\"Contraseña de $user actualizada exitosamente\"}"
+}
+
+account_path() {
+    local user="$FTP_USER"
+    local sys_user="$PARAM1"
+    local domain="$PARAM2"
+    local rel_path="$PARAM3"
+
+    [ -z "$user" ] && exit_error "Usuario FTP requerido"
+    [ -z "$sys_user" ] && sys_user="admin"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+
+    user=$(echo "$user" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_.-')
+    domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9.-')
+    id "$sys_user" >/dev/null 2>&1 || exit_error "El usuario Linux $sys_user no existe"
+
+    rel_path=$(echo "$rel_path" | sed -e 's/^[ \t\/]*//' -e 's/[ \t\/]*$//')
+    local full_path="/home/${sys_user}/web/${domain}"
+    if [ -n "$rel_path" ]; then
+        full_path="${full_path}/${rel_path}"
+    fi
+
+    mkdir -p "$full_path"
+    chown -R "${sys_user}:${sys_user}" "$full_path"
+
+    local user_file="${VSFTPD_USERS_DIR}/${user}"
+    cat <<EOF > "$user_file"
+guest_username=${sys_user}
+local_root=${full_path}
+write_enable=YES
+anon_world_readable_only=NO
+anon_upload_enable=YES
+anon_mkdir_write_enable=YES
+anon_other_write_enable=YES
+EOF
+    chmod 644 "$user_file"
+
+    log_info "Ruta de cuenta FTP $user actualizada a: $full_path"
+    echo "{\"status\":\"success\",\"message\":\"Ruta de acceso actualizada para $user\",\"path\":\"$(json_escape "$full_path")\"}"
+}
+
+ftp_status() {
+    local status="inactive"
+    if systemctl is-active --quiet vsftpd 2>/dev/null; then
+        status="active"
+    fi
+    echo "{\"status\":\"success\",\"vsftpd\":\"$status\"}"
+}
+
+case "$ACTION" in
+    account-add)
+        account_add
+        ;;
+    account-del)
+        account_del
+        ;;
+    account-passwd)
+        account_passwd
+        ;;
+    account-path)
+        account_path
+        ;;
+    status)
+        ftp_status
+        ;;
+    *)
+        usage
+        ;;
+esac
