@@ -266,7 +266,10 @@ EOF
 
         # Reiniciar servicios PHP-FPM para aplicar la nueva zona horaria
         systemctl restart "php*-fpm" 2>/dev/null || true
-        systemctl restart pirulugcp-php 2>/dev/null || true
+        if command -v systemctl >/dev/null 2>&1; then
+            (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+        fi
 
         CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S %Z" 2>/dev/null)
         echo "{\"status\":\"success\",\"message\":\"Zona horaria actualizada a $NEW_TIMEZONE\",\"timezone\":\"$(json_escape "$NEW_TIMEZONE")\",\"current_time\":\"$(json_escape "$CURRENT_TIME")\"}"
@@ -381,8 +384,11 @@ EOF
         chmod +x "${PANEL_DIR}/engine/bin/"* 2>/dev/null || true
         chown -R www-data:www-data "${PANEL_DIR}/cp-web" "${PANEL_DIR}/config" /var/lib/pirulugcp /var/log/pirulugcp 2>/dev/null || true
 
-        # Reiniciar el servicio PHP-FPM del panel
-        systemctl restart pirulugcp-php 2>/dev/null || true
+        # Reiniciar el servicio PHP-FPM del panel de forma asincrona para no cortar la conexion HTTP
+        if command -v systemctl >/dev/null 2>&1; then
+            (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
+            disown 2>/dev/null || true
+        fi
 
         COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null || echo "")
         COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null || echo "")
