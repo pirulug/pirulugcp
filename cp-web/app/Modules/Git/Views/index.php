@@ -136,17 +136,24 @@ $domainId   = (int)$domain["id"];
         </div>
     </div>
 </div>
-
-<!-- Log del ultimo despliegue -->
-<?php if (!empty($git["last_deploy_log"])): ?>
-<div class="bg-body p-3 rounded mb-3">
-    <h6 class="fw-bold mb-2">
-        <i class="bi bi-terminal me-1"></i> Registro del Ultimo Despliegue
-    </h6>
-    <pre class="bg-dark text-light p-3 rounded small mb-0 font-monospace" style="max-height: 250px; overflow-y: auto;"><code><?= $git["last_deploy_log"] ?></code></pre>
-</div>
 <?php endif; ?>
 
+<!-- Log y Consola de Resultados del Despliegue -->
+<?php if (!empty($git["last_deploy_log"])): ?>
+<div class="bg-body p-3 rounded mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold mb-0">
+            <i class="bi bi-terminal me-1"></i> Consola de Resultados y Log de Despliegue
+        </h6>
+        <?php if (!empty($git["last_deploy_status"])): ?>
+            <span class="badge <?= ($git["last_deploy_status"] === "success") ? "bg-success-subtle text-success border border-success-subtle" : "bg-danger-subtle text-danger border border-danger-subtle" ?>">
+                <i class="bi <?= ($git["last_deploy_status"] === "success") ? "bi-check-circle" : "bi-exclamation-triangle" ?> me-1"></i>
+                <?= strtoupper($git["last_deploy_status"]) ?>
+            </span>
+        <?php endif; ?>
+    </div>
+    <pre class="bg-dark text-light p-3 rounded small mb-0 font-monospace" style="max-height: 250px; overflow-y: auto;"><code><?= $git["last_deploy_log"] ?></code></pre>
+</div>
 <?php endif; ?>
 
 <div class="row g-3">
@@ -157,7 +164,7 @@ $domainId   = (int)$domain["id"];
                 <i class="bi bi-gear me-1"></i> <?= $isConnected ? "Actualizar Configuracion Git" : "Conectar Repositorio Git" ?>
             </h6>
 
-            <form action="/web/git/connect" method="POST" onsubmit="return confirm('ADVERTENCIA: Se eliminara todo el contenido actual de la carpeta raiz del dominio para clonar los archivos del repositorio. Deseas continuar?');">
+            <form action="/web/git/connect" method="POST" onsubmit="return confirm('Deseas vincular y sincronizar el repositorio Git? Los archivos locales ignorados (.gitignore como config.php o .env) se mantendran intactos.');">
                 <input type="hidden" name="domain_id" value="<?= $domainId ?>">
 
                 <div class="mb-3">
@@ -194,9 +201,9 @@ $domainId   = (int)$domain["id"];
                     </div>
                 </div>
 
-                <div class="alert alert-warning py-2 px-3 small mb-3">
-                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                    <strong>Advertencia:</strong> Todo el contenido actual de la carpeta raiz del dominio sera reemplazado por los archivos del repositorio Git clonado.
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    <i class="bi bi-shield-check me-1"></i>
+                    <strong>Preservacion de Archivos:</strong> Los archivos ignorados por <code>.gitignore</code> o de configuracion local (como <code>config.php</code>, <code>.env</code> o carpetas de subidas) se mantendran siempre intactos durante la sincronizacion.
                 </div>
 
                 <button type="submit" class="btn btn-primary text-uppercase fw-bold w-100">

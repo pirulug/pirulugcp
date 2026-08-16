@@ -7,7 +7,7 @@ setup_webserver() {
     mkdir -p /etc/nginx/sites-enabled /etc/nginx/sites-available
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
-    apt-get install -y git nginx apache2 libapache2-mod-fcgid certbot python3-certbot-nginx mariadb-server mariadb-client || (rm -f /etc/nginx/sites-enabled/default && dpkg --configure -a)
+    apt-get install -y nginx apache2 libapache2-mod-fcgid certbot python3-certbot-nginx mariadb-server mariadb-client || (rm -f /etc/nginx/sites-enabled/default && dpkg --configure -a)
     rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
     # 1. Configurar Apache para escuchar en el puerto interno 8080 (backend)

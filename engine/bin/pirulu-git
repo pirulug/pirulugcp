@@ -99,11 +99,40 @@ case "$ACTION" in
         OUTPUT=""
         CLONE_SUCCESS=0
 
-        # Limpiar contenido anterior para clonacion limpia sin conflictos de ramas ni archivos no rastreados
-        rm -rf "${DEPLOY_DIR:?}"/* "${DEPLOY_DIR:?}"/.[!.]* 2>/dev/null || true
+        cd "$DEPLOY_DIR" || exit 1
 
-        OUTPUT=$(git clone --branch "$BRANCH" "$REPO_URL" "$DEPLOY_DIR" 2>&1)
-        CLONE_SUCCESS=$?
+        # Inicializar repositorio Git localmente si no existe
+        if [ ! -d ".git" ]; then
+            git init >/dev/null 2>&1
+        fi
+        git remote remove origin >/dev/null 2>&1 || true
+        git remote add origin "$REPO_URL" 2>&1
+
+        # Descargar referencias del repositorio remoto
+        FETCH_OUT=$(git fetch --prune origin 2>&1)
+        FETCH_CODE=$?
+
+        if [ $FETCH_CODE -ne 0 ]; then
+            CLONE_SUCCESS=1
+            OUTPUT="$FETCH_OUT"
+        else
+            # Si la rama especificada no existe remotamente, resolver automaticamente (master, main o primera disponible)
+            if ! git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1; then
+                if git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+                    BRANCH="master"
+                elif git rev-parse --verify "origin/main" >/dev/null 2>&1; then
+                    BRANCH="main"
+                else
+                    DETECTED_BRANCH=$(git branch -r 2>/dev/null | grep -v 'HEAD' | head -n 1 | sed 's/^[ *]*origin\///' | tr -d ' ')
+                    [ -n "$DETECTED_BRANCH" ] && BRANCH="$DETECTED_BRANCH"
+                fi
+            fi
+
+            CHECKOUT_OUT=$(git checkout -B "$BRANCH" "origin/${BRANCH}" --force 2>&1)
+            RESET_OUT=$(git reset --hard "origin/${BRANCH}" 2>&1)
+            OUTPUT="${FETCH_OUT}"$'\n'"${CHECKOUT_OUT}"$'\n'"${RESET_OUT}"
+            CLONE_SUCCESS=$?
+        fi
 
         chown -R "${USER}:${USER}" "$DEPLOY_DIR"
 
@@ -114,7 +143,7 @@ case "$ACTION" in
             COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
 
             log_info "Repositorio clonado con exito para $DOMAIN ($REPO_URL, rama $BRANCH)"
-            echo "{\"status\":\"success\",\"message\":\"Repositorio clonado correctamente\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+            echo "{\"status\":\"success\",\"message\":\"Repositorio clonado correctamente\",\"branch\":\"$(json_escape "$BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
         else
             ERROR_MSG="Error al clonar el repositorio"
             if echo "$OUTPUT" | grep -qi "could not read Username\|Authentication failed"; then
@@ -140,16 +169,39 @@ case "$ACTION" in
         fi
 
         setup_user_ssh_env
+        export GIT_TERMINAL_PROMPT=0
         export GIT_SSH_COMMAND="$(get_git_ssh_command)"
 
         cd "$DEPLOY_DIR" || exit 1
 
-        [ -z "$BRANCH" ] && BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        # Descargar cambios de todas las referencias remotas
+        FETCH_OUT=$(git fetch --prune origin 2>&1)
+        FETCH_CODE=$?
 
-        FETCH_OUT=$(git fetch origin "$BRANCH" 2>&1)
-        RESET_OUT=$(git reset --hard "origin/${BRANCH}" 2>&1)
-        PULL_STATUS=$?
-        OUTPUT="${FETCH_OUT}\n${RESET_OUT}"
+        if [ $FETCH_CODE -ne 0 ]; then
+            PULL_STATUS=1
+            OUTPUT="$FETCH_OUT"
+        else
+            # Si no se paso rama, usar la rama actual
+            [ -z "$BRANCH" ] && BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+
+            # Si la rama no existe remotamente, buscar alternativas validas (master, main o primera disponible)
+            if ! git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1; then
+                if git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+                    BRANCH="master"
+                elif git rev-parse --verify "origin/main" >/dev/null 2>&1; then
+                    BRANCH="main"
+                else
+                    DETECTED_BRANCH=$(git branch -r 2>/dev/null | grep -v 'HEAD' | head -n 1 | sed 's/^[ *]*origin\///' | tr -d ' ')
+                    [ -n "$DETECTED_BRANCH" ] && BRANCH="$DETECTED_BRANCH"
+                fi
+            fi
+
+            CHECKOUT_OUT=$(git checkout -B "$BRANCH" "origin/${BRANCH}" --force 2>&1)
+            RESET_OUT=$(git reset --hard "origin/${BRANCH}" 2>&1)
+            OUTPUT="${FETCH_OUT}"$'\n'"${CHECKOUT_OUT}"$'\n'"${RESET_OUT}"
+            PULL_STATUS=$?
+        fi
 
         chown -R "${USER}:${USER}" "$DEPLOY_DIR"
 
@@ -159,7 +211,7 @@ case "$ACTION" in
             COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
 
             log_info "Despliegue (pull) completado para $DOMAIN ($BRANCH, commit $COMMIT_HASH)"
-            echo "{\"status\":\"success\",\"message\":\"Despliegue completado exitosamente\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+            echo "{\"status\":\"success\",\"message\":\"Despliegue completado exitosamente\",\"branch\":\"$(json_escape "$BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
         else
             log_error "Error en git pull para $DOMAIN: $OUTPUT"
             echo "{\"status\":\"error\",\"message\":\"Error al actualizar repositorio\",\"log\":\"$(json_escape "$OUTPUT")\"}"

@@ -160,7 +160,32 @@ class GitController {
             View::setFlash("success", "Repositorio vinculado y desplegado con exito.");
         } else {
             $errorLog = $cloneRes["log"] ?? ($cloneRes["message"] ?? "Error desconocido al clonar");
-            View::setFlash("danger", "Fallo al clonar el repositorio: " . $errorLog);
+            $errorMsg = $cloneRes["message"] ?? "Error al clonar el repositorio";
+
+            $stmt = $db->prepare("
+                INSERT INTO domain_git (
+                    domain_id, repo_url, branch, deploy_suffix, is_private,
+                    ssh_public_key, ssh_private_key_path, webhook_secret, auto_deploy,
+                    last_deploy_at, last_deploy_status, last_deploy_log
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'error', ?)
+                ON CONFLICT(domain_id) DO UPDATE SET
+                    repo_url = excluded.repo_url,
+                    branch = excluded.branch,
+                    is_private = excluded.is_private,
+                    ssh_public_key = excluded.ssh_public_key,
+                    ssh_private_key_path = excluded.ssh_private_key_path,
+                    auto_deploy = excluded.auto_deploy,
+                    last_deploy_at = excluded.last_deploy_at,
+                    last_deploy_status = excluded.last_deploy_status,
+                    last_deploy_log = excluded.last_deploy_log
+            ");
+            $stmt->execute([
+                $domainId, $repoUrl, $branch, $docSuffix, $isPrivate,
+                $publicKey, $keyPath, $webhookSecret, $autoDeploy,
+                $errorLog
+            ]);
+
+            View::setFlash("danger", $errorMsg);
         }
 
         header("Location: /web/git/" . $domainId);
@@ -195,8 +220,11 @@ class GitController {
         $pullRes = Engine::execute("pirulu-git", ["pull", $username, $domainName, $branch, $docSuffix]);
 
         if (isset($pullRes["status"]) && $pullRes["status"] === "success") {
+            $effectiveBranch = $pullRes["branch"] ?? $branch;
+
             $stmt = $db->prepare("
                 UPDATE domain_git SET
+                    branch = ?,
                     last_commit_hash = ?,
                     last_commit_message = ?,
                     last_commit_author = ?,
@@ -206,6 +234,7 @@ class GitController {
                 WHERE domain_id = ?
             ");
             $stmt->execute([
+                $effectiveBranch,
                 $pullRes["commit_hash"] ?? null,
                 $pullRes["commit_message"] ?? null,
                 $pullRes["commit_author"] ?? null,
