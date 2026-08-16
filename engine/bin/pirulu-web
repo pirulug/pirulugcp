@@ -33,6 +33,7 @@ DOC_SUFFIX="${DOC_SUFFIX#/}"
 [ -z "$DOC_SUFFIX" ] && DOC_SUFFIX="public_html"
 
 DOC_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DOC_SUFFIX}"
+WEB_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
 FPM_SOCKET="/run/php/php${PHP_VERSION}-fpm-${USER}-${DOMAIN}.sock"
 
 reload_servers() {
@@ -147,7 +148,7 @@ case "$ACTION" in
 
         # 1. Crear Pool de PHP-FPM con aislamiento del dominio
         "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
-        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$PHP_VERSION" "$DOC_ROOT" "$FPM_SOCKET"
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$PHP_VERSION" "$DOC_ROOT" "$FPM_SOCKET" "$WEB_ROOT"
 
         # 2. Configurar Backend Apache (puerto 8080)
         if [ -d "/etc/apache2" ]; then
@@ -203,8 +204,9 @@ case "$ACTION" in
         CURRENT_FPM_SOCKET="/run/php/php${ACTIVE_PHP}-fpm-${USER}-${DOMAIN}.sock"
 
         # Actualizar pool PHP-FPM con la nueva ruta base
+        CURRENT_WEB_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
         "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
-        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$ACTIVE_PHP" "$NEW_DOC_ROOT" "$CURRENT_FPM_SOCKET"
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$ACTIVE_PHP" "$NEW_DOC_ROOT" "$CURRENT_FPM_SOCKET" "$CURRENT_WEB_ROOT"
 
         # Crear index.php en el nuevo docroot si esta vacio
         if [ ! -f "${NEW_DOC_ROOT}/index.php" ] && [ ! -f "${NEW_DOC_ROOT}/index.html" ]; then
@@ -265,9 +267,10 @@ case "$ACTION" in
         NEW_SOCKET="/run/php/php${NEW_PHP}-fpm-${USER}-${DOMAIN}.sock"
 
         # Eliminar pool de cualquier otra version de PHP para este dominio
+        DOMAIN_WEB_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
         "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
         # Crear pool en la nueva version de PHP con aislamiento
-        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$NEW_PHP" "$ACTIVE_DOC_ROOT" "$NEW_SOCKET"
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$NEW_PHP" "$ACTIVE_DOC_ROOT" "$NEW_SOCKET" "$DOMAIN_WEB_ROOT"
 
         if [ -d "/etc/apache2" ]; then
             APACHE_CONF="${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"

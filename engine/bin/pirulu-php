@@ -12,10 +12,10 @@ ACTION="$1"
 usage() {
     echo "Uso: pirulu-php <accion> [argumentos]"
     echo "Acciones:"
-    echo "  versions                                                  Listar versiones de PHP instaladas (JSON)"
-    echo "  pool-add <user> <domain> <version> <doc_root> <socket>    Crear pool de PHP-FPM"
-    echo "  pool-del <user> <domain> [version]                        Eliminar pool de PHP-FPM"
-    echo "  restart <version>                                         Reiniciar servicio PHP-FPM"
+    echo "  versions                                                            Listar versiones de PHP instaladas (JSON)"
+    echo "  pool-add <user> <domain> <version> <doc_root> <socket> <web_root>  Crear pool de PHP-FPM"
+    echo "  pool-del <user> <domain> [version]                                  Eliminar pool de PHP-FPM"
+    echo "  restart <version>                                                   Reiniciar servicio PHP-FPM"
     exit 1
 }
 
@@ -53,6 +53,9 @@ case "$ACTION" in
         VERSION="$4"
         DOC_ROOT="$5"
         SOCKET="$6"
+        # WEB_ROOT es el directorio raiz del dominio (padre del doc_root)
+        # Se usa en open_basedir para permitir acceso al dominio completo
+        WEB_ROOT="${7:-${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}}"
 
         [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$VERSION" ] || [ -z "$DOC_ROOT" ] || [ -z "$SOCKET" ] && usage
 
@@ -64,11 +67,12 @@ case "$ACTION" in
 
         sed -e "s|%POOL_NAME%|${POOL_NAME}|g" \
             -e "s|%USER%|${USER}|g" \
+            -e "s|%WEB_ROOT%|${WEB_ROOT}|g" \
             -e "s|%DOC_ROOT%|${DOC_ROOT}|g" \
             -e "s|%FPM_SOCKET%|${SOCKET}|g" \
             "$TPL_FILE" > "$POOL_FILE"
 
-        systemctl restart "php${VERSION}-fpm" >/dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" >/dev/null 2>&1
+        systemctl restart "php${VERSION}-fpm" > /dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" > /dev/null 2>&1
         log_info "Pool PHP-FPM $POOL_NAME creado para PHP $VERSION"
         echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM creado para PHP $VERSION\"}"
         ;;

@@ -1,12 +1,4 @@
-<VirtualHost *:80>
-    ServerName %DOMAIN%
-    ServerAlias www.%DOMAIN% %ALIASES%
-    RewriteEngine On
-    RewriteCond %{HTTPS} off
-    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-</VirtualHost>
-
-<VirtualHost *:443>
+<VirtualHost 127.0.0.1:8080>
     ServerName %DOMAIN%
     ServerAlias www.%DOMAIN% %ALIASES%
     ServerAdmin webmaster@%DOMAIN%
@@ -19,15 +11,10 @@
         Require all granted
     </Directory>
 
-    SSLEngine on
-    SSLCertificateFile %SSL_CERT%
-    SSLCertificateKeyFile %SSL_KEY%
-    %SSL_CA_DIRECTIVE%
-
     <FilesMatch \.php$>
         SetHandler "proxy:unix:%FPM_SOCKET%|fcgi://localhost"
     </FilesMatch>
 
-    ErrorLog ${APACHE_LOG_DIR}/%DOMAIN%_ssl_error.log
-    CustomLog ${APACHE_LOG_DIR}/%DOMAIN%_ssl_access.log combined
+    ErrorLog ${APACHE_LOG_DIR}/%DOMAIN%_error.log
+    CustomLog ${APACHE_LOG_DIR}/%DOMAIN%_access.log combined
 </VirtualHost>

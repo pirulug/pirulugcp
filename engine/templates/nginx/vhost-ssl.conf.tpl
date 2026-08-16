@@ -30,6 +30,13 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
+    # Entrega directa de archivos estaticos por Nginx
+    location ~* \.(jpg|jpeg|gif|png|ico|svg|css|zip|tgz|gz|rar|bz2|doc|xls|exe|pdf|ppt|txt|tar|mid|midi|wav|bmp|rtf|js|woff|woff2|ttf|otf|eot|webp|avif)$ {
+        access_log off;
+        expires 30d;
+        try_files $uri @fallback;
+    }
+
     # Proxy inverso hacia el backend Apache (puerto 8080)
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -37,14 +44,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-    }
-
-    # Entrega directa de archivos estaticos por Nginx
-    location ~* ^.+\.(jpg|jpeg|gif|png|ico|svg|css|zip|tgz|gz|rar|bz2|doc|xls|exe|pdf|ppt|txt|tar|mid|midi|wav|bmp|rtf|js|woff|woff2|ttf|otf|eot|webp|avif)$ {
-        root %DOC_ROOT%;
-        access_log off;
-        expires 30d;
-        try_files $uri @fallback;
     }
 
     location @fallback {
