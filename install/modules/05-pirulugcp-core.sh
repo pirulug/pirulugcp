@@ -19,9 +19,11 @@ deploy_pirulugcp_core() {
     # Permisos ejecutables para el Engine
     chmod +x "${PIRULU_INSTALL_DIR}/engine/bin/"*
 
-    # Permisos sudoers para www-data
+    # Permisos sudoers para www-data (sin PTY ni password)
     local sudoers_file="/etc/sudoers.d/pirulugcp"
     cat <<EOF > "$sudoers_file"
+Defaults:www-data !use_pty
+Defaults:www-data !requiretty
 www-data ALL=(ALL) NOPASSWD: ${PIRULU_INSTALL_DIR}/engine/bin/*
 EOF
     chmod 0440 "$sudoers_file"

@@ -14,17 +14,24 @@ class Engine {
         }
 
         $escapedArgs = array_map("escapeshellarg", $args);
-        $command = "sudo " . escapeshellcmd($binPath) . " " . implode(" ", $escapedArgs) . " 2>&1";
+        $command = "sudo -n " . escapeshellcmd($binPath) . " " . implode(" ", $escapedArgs) . " 2>&1";
 
         $output = shell_exec($command);
-        $decoded = json_decode($output ?? "", true);
+        $lines = explode("\n", trim($output ?? ""));
 
-        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-            return $decoded;
+        // Buscar el ultimo objeto JSON valido en la salida
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $line = trim($lines[$i]);
+            if (!empty($line) && ($line[0] === "{" || $line[0] === "[")) {
+                $decoded = json_decode($line, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    return $decoded;
+                }
+            }
         }
 
         return [
-            "status" => ($output !== null) ? "success" : "error",
+            "status" => ($output !== null && strpos($output, "error") === false) ? "success" : "error",
             "raw_output" => $output ?? "Sin respuesta del sistema"
         ];
     }

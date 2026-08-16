@@ -12,7 +12,7 @@ pm.max_children = 10
 pm.process_idle_timeout = 30s
 pm.max_requests = 500
 
-chdir = %DOC_ROOT%
+chdir = /
 
 php_admin_value[open_basedir] = %DOC_ROOT%:/tmp:/var/tmp
 php_admin_value[upload_tmp_dir] = /tmp

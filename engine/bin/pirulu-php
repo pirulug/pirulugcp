@@ -81,22 +81,14 @@ case "$ACTION" in
         [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
         POOL_NAME="${USER}_${DOMAIN}"
 
-        if [ -n "$VERSION" ]; then
-            POOL_FILE="/etc/php/${VERSION}/fpm/pool.d/${POOL_NAME}.conf"
+        IFS="," read -r -a VERSIONS <<< "${AVAILABLE_PHP_VERSIONS:-7.4,8.0,8.1,8.2,8.3,8.4,8.5}"
+        for ver in "${VERSIONS[@]}"; do
+            POOL_FILE="/etc/php/${ver}/fpm/pool.d/${POOL_NAME}.conf"
             if [ -f "$POOL_FILE" ]; then
                 rm -f "$POOL_FILE"
-                systemctl restart "php${VERSION}-fpm" >/dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" >/dev/null 2>&1
+                systemctl restart "php${ver}-fpm" >/dev/null 2>&1 || systemctl reload "php${ver}-fpm" >/dev/null 2>&1
             fi
-        else
-            IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
-            for ver in "${VERSIONS[@]}"; do
-                POOL_FILE="/etc/php/${ver}/fpm/pool.d/${POOL_NAME}.conf"
-                if [ -f "$POOL_FILE" ]; then
-                    rm -f "$POOL_FILE"
-                    systemctl restart "php${ver}-fpm" >/dev/null 2>&1 || systemctl reload "php${ver}-fpm" >/dev/null 2>&1
-                fi
-            done
-        fi
+        done
 
         log_info "Pool PHP-FPM $POOL_NAME eliminado"
         echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM eliminado\"}"
