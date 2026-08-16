@@ -540,6 +540,29 @@ class FileManagerController {
         exit;
     }
 
+    public function composerAction(): void {
+        Auth::requireAuth();
+        $domain = trim($_POST["domain"] ?? "");
+        $path = trim($_POST["path"] ?? "");
+        $username = trim($_POST["username"] ?? "admin");
+        $action = trim($_POST["action"] ?? "install");
+
+        if (!in_array($action, ["install", "update", "dump-autoload"], true)) {
+            $action = "install";
+        }
+
+        $res = Engine::execute("pirulu-composer", [$action, $username, $domain, $path]);
+
+        if (isset($res["status"]) && $res["status"] === "success") {
+            View::setFlash("success", "Composer " . htmlspecialchars($action) . " ejecutado correctamente.");
+        } else {
+            View::setFlash("danger", "Error en Composer: " . htmlspecialchars($res["message"] ?? "Fallo"));
+        }
+
+        header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+        exit;
+    }
+
     private static function formatBytes(int $bytes): string {
         $units = ["B", "KB", "MB", "GB", "TB"];
         $bytes = max($bytes, 0);

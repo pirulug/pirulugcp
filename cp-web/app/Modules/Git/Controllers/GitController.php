@@ -50,6 +50,9 @@ class GitController {
             $liveStatus = Engine::execute("pirulu-git", ["status", $username, $domainName, $domain["doc_root_suffix"] ?? "public_html"]);
         }
 
+        // Obtener estado de Composer para el dominio
+        $composerStatus = Engine::execute("pirulu-composer", ["status", $username, $domainName, $domain["doc_root_suffix"] ?? "public_html"]);
+
         // Construir URL base para el webhook
         $host = $_SERVER["HTTP_HOST"] ?? "localhost:8083";
         $scheme = (isset($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] === "on") ? "https" : "http";
@@ -59,12 +62,13 @@ class GitController {
         }
 
         View::render("Modules/Git/Views/index", [
-            "pageTitle"   => "Gestion Git - " . $domainName,
-            "domain"      => $domain,
-            "git"         => $gitConfig,
-            "publicKey"   => $publicKey,
-            "liveStatus"  => $liveStatus,
-            "webhookUrl"  => $webhookUrl
+            "pageTitle"      => "Gestion Git & Composer - " . $domainName,
+            "domain"         => $domain,
+            "git"            => $gitConfig,
+            "publicKey"      => $publicKey,
+            "liveStatus"     => $liveStatus,
+            "composerStatus" => $composerStatus,
+            "webhookUrl"     => $webhookUrl
         ]);
     }
 
@@ -257,6 +261,66 @@ class GitController {
             ]);
 
             View::setFlash("danger", "Error en el despliegue: " . ($pullRes["message"] ?? "Error"));
+        }
+
+        header("Location: /web/git/" . $domainId);
+        exit();
+    }
+
+    public function composer(string $domainId): void {
+        Auth::requireAuth();
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare("
+            SELECT g.*, d.domain, d.doc_root_suffix, u.username 
+            FROM domain_git g
+            INNER JOIN domains d ON g.domain_id = d.id
+            LEFT JOIN users u ON d.user_id = u.id
+            WHERE g.domain_id = ?
+        ");
+        $stmt->execute([(int)$domainId]);
+        $git = $stmt->fetch();
+
+        if (!$git) {
+            View::setFlash("danger", "No hay configuracion de Git para este dominio.");
+            header("Location: /web");
+            exit();
+        }
+
+        $username = $git["username"] ?? "admin";
+        $domainName = $git["domain"];
+        $docSuffix = $git["doc_root_suffix"] ?? "public_html";
+
+        $compRes = Engine::execute("pirulu-composer", ["install", $username, $domainName, $docSuffix]);
+
+        if (isset($compRes["status"]) && $compRes["status"] === "success") {
+            $stmt = $db->prepare("
+                UPDATE domain_git SET
+                    last_deploy_at = datetime('now'),
+                    last_deploy_status = 'success',
+                    last_deploy_log = ?
+                WHERE domain_id = ?
+            ");
+            $stmt->execute([
+                $compRes["log"] ?? "Composer install completado exitosamente",
+                (int)$domainId
+            ]);
+
+            View::setFlash("success", "Composer install ejecutado exitosamente.");
+        } else {
+            $stmt = $db->prepare("
+                UPDATE domain_git SET
+                    last_deploy_at = datetime('now'),
+                    last_deploy_status = 'error',
+                    last_deploy_log = ?
+                WHERE domain_id = ?
+            ");
+            $stmt->execute([
+                $compRes["log"] ?? ($compRes["message"] ?? "Error en composer install"),
+                (int)$domainId
+            ]);
+
+            View::setFlash("danger", "Error al ejecutar Composer install: " . ($compRes["message"] ?? "Error"));
         }
 
         header("Location: /web/git/" . $domainId);

@@ -19,3 +19,7 @@ pm.max_requests = 500
 php_admin_value[memory_limit] = 256M
 php_admin_value[upload_max_filesize] = 128M
 php_admin_value[post_max_size] = 128M
+php_admin_flag[display_errors] = on
+php_admin_flag[display_startup_errors] = on
+php_admin_value[error_reporting] = 32767
+php_admin_value[error_log] = /var/log/pirulugcp/panel_php_error.log

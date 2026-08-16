@@ -180,6 +180,26 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-composer") {
+            if ($action === "status") {
+                return [
+                    "status"             => "success",
+                    "composer_installed" => true,
+                    "composer_version"   => "Composer version 2.7.7 2024-06-10 15:43:28",
+                    "php_binary"         => "/usr/bin/php",
+                    "has_composer_json"  => true,
+                    "has_composer_lock"  => true,
+                    "has_vendor"         => true,
+                    "has_autoload"       => true
+                ];
+            }
+            return [
+                "status"  => "success",
+                "message" => "Operacion de Composer ejecutada en modo simulacion",
+                "log"     => "Loading composer repositories with package information\nInstalling dependencies from lock file\nGenerating autoload files\nGenerated autoload files"
+            ];
+        }
+
         return [
             "status"  => "success",
             "message" => "Operacion completada exitosamente (Modo desarrollo)"

@@ -142,6 +142,13 @@ case "$ACTION" in
             COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null)
             COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
 
+            # Ejecutar Composer si existe composer.json en el proyecto clonado
+            if [ -f "${DEPLOY_DIR}/composer.json" ] && [ -x "${SCRIPT_DIR}/pirulu-composer" ]; then
+                log_info "Detectado composer.json en $DOMAIN tras clonar. Ejecutando composer install..."
+                COMPOSER_RES=$("${SCRIPT_DIR}/pirulu-composer" install "$USER" "$DOMAIN" "$DEPLOY_SUFFIX" 2>&1)
+                OUTPUT="${OUTPUT}"$'\n\n'"--- Composer Install ---"$'\n'"${COMPOSER_RES}"
+            fi
+
             log_info "Repositorio clonado con exito para $DOMAIN ($REPO_URL, rama $BRANCH)"
             echo "{\"status\":\"success\",\"message\":\"Repositorio clonado correctamente\",\"branch\":\"$(json_escape "$BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
         else
@@ -209,6 +216,13 @@ case "$ACTION" in
             COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null)
             COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null)
             COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
+
+            # Ejecutar Composer si existe composer.json en el proyecto tras pull
+            if [ -f "${DEPLOY_DIR}/composer.json" ] && [ -x "${SCRIPT_DIR}/pirulu-composer" ]; then
+                log_info "Detectado composer.json en $DOMAIN tras pull. Ejecutando composer install..."
+                COMPOSER_RES=$("${SCRIPT_DIR}/pirulu-composer" install "$USER" "$DOMAIN" "$DEPLOY_SUFFIX" 2>&1)
+                OUTPUT="${OUTPUT}"$'\n\n'"--- Composer Install ---"$'\n'"${COMPOSER_RES}"
+            fi
 
             log_info "Despliegue (pull) completado para $DOMAIN ($BRANCH, commit $COMMIT_HASH)"
             echo "{\"status\":\"success\",\"message\":\"Despliegue completado exitosamente\",\"branch\":\"$(json_escape "$BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"

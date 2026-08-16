@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# Gestor de dependencias Composer para dominios en PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/db-helper.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+DOMAIN="$3"
+DEPLOY_SUFFIX="${4:-public_html}"
+EXTRA_PARAM="$5"
+
+usage() {
+    echo "Uso: pirulu-composer <status|install|update|dump-autoload|require> <usuario> <dominio> [doc_root_suffix] [param]"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+# Obtener binario de PHP especifico del dominio si existe
+get_domain_php_bin() {
+    local domain="$1"
+    local user="$2"
+    local php_ver=""
+
+    # Buscar socket activo del dominio
+    for sock in /run/php/php*-fpm-"${user}"-"${domain}".sock; do
+        if [ -S "$sock" ]; then
+            php_ver=$(basename "$sock" | sed -E 's/php([0-9]+\.[0-9]+)-fpm-.*/\1/')
+            break
+        fi
+    done
+
+    if [ -n "$php_ver" ] && [ -x "/usr/bin/php${php_ver}" ]; then
+        echo "/usr/bin/php${php_ver}"
+    elif command -v php >/dev/null 2>&1; then
+        command -v php
+    elif [ -x "/usr/bin/php8.2" ]; then
+        echo "/usr/bin/php8.2"
+    else
+        echo "php"
+    fi
+}
+
+# Asegurar instalacion global de Composer si no existe
+ensure_composer_installed() {
+    if [ ! -x "/usr/local/bin/composer" ] && ! command -v composer >/dev/null 2>&1; then
+        log_info "Instalando Composer globalmente en /usr/local/bin/composer..."
+        curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer >/dev/null 2>&1
+        chmod +x /usr/local/bin/composer
+    fi
+}
+
+ensure_user_composer_env() {
+    local user="$1"
+    local user_home="${DEFAULT_USER_HOME}/${user}"
+    mkdir -p "${user_home}/.composer" "${user_home}/.config/composer"
+    chown -R "${user}:${user}" "${user_home}/.composer" "${user_home}/.config"
+    chmod 700 "${user_home}/.composer"
+}
+
+get_composer_bin() {
+    if [ -x "/usr/local/bin/composer" ]; then
+        echo "/usr/local/bin/composer"
+    elif command -v composer >/dev/null 2>&1; then
+        command -v composer
+    else
+        echo "/usr/local/bin/composer"
+    fi
+}
+
+case "$ACTION" in
+    status)
+        ensure_composer_installed
+        COMPOSER_BIN=$(get_composer_bin)
+        COMPOSER_VER=""
+        if [ -x "$COMPOSER_BIN" ]; then
+            COMPOSER_VER=$("$COMPOSER_BIN" --version 2>/dev/null | head -n 1)
+        fi
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        HAS_JSON=false
+        HAS_LOCK=false
+        HAS_VENDOR=false
+        HAS_AUTOLOAD=false
+
+        [ -f "${DEPLOY_DIR}/composer.json" ] && HAS_JSON=true
+        [ -f "${DEPLOY_DIR}/composer.lock" ] && HAS_LOCK=true
+        [ -d "${DEPLOY_DIR}/vendor" ] && HAS_VENDOR=true
+        [ -f "${DEPLOY_DIR}/vendor/autoload.php" ] && HAS_AUTOLOAD=true
+
+        PHP_BIN=$(get_domain_php_bin "$DOMAIN" "$USER")
+
+        echo "{\"status\":\"success\",\"composer_installed\":true,\"composer_version\":\"$(json_escape "$COMPOSER_VER")\",\"php_binary\":\"$(json_escape "$PHP_BIN")\",\"has_composer_json\":$HAS_JSON,\"has_composer_lock\":$HAS_LOCK,\"has_vendor\":$HAS_VENDOR,\"has_autoload\":$HAS_AUTOLOAD}"
+        ;;
+
+    install)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        ensure_composer_installed
+        ensure_user_composer_env "$USER"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        if [ ! -d "$DEPLOY_DIR" ]; then
+            exit_error "El directorio del dominio no existe: $DEPLOY_DIR"
+        fi
+
+        if [ ! -f "${DEPLOY_DIR}/composer.json" ]; then
+            echo "{\"status\":\"error\",\"message\":\"No se encontro composer.json en $DEPLOY_DIR\"}"
+            exit 1
+        fi
+
+        PHP_BIN=$(get_domain_php_bin "$DOMAIN" "$USER")
+        COMPOSER_BIN=$(get_composer_bin)
+        USER_HOME="${DEFAULT_USER_HOME}/${USER}"
+
+        log_info "Ejecutando composer install para $DOMAIN ($USER) con $PHP_BIN..."
+
+        OUTPUT=$(cd "$DEPLOY_DIR" && sudo -u "$USER" HOME="$USER_HOME" COMPOSER_HOME="${USER_HOME}/.composer" "$PHP_BIN" "$COMPOSER_BIN" install --no-interaction --prefer-dist --optimize-autoloader 2>&1)
+        EXEC_CODE=$?
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $EXEC_CODE -eq 0 ]; then
+            log_info "Composer install completado exitosamente para $DOMAIN"
+            echo "{\"status\":\"success\",\"message\":\"Dependencias instaladas correctamente con Composer\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            log_error "Error en composer install para $DOMAIN: $OUTPUT"
+            echo "{\"status\":\"error\",\"message\":\"Fallo al ejecutar composer install\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    update)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        ensure_composer_installed
+        ensure_user_composer_env "$USER"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        if [ ! -d "$DEPLOY_DIR" ]; then
+            exit_error "El directorio del dominio no existe: $DEPLOY_DIR"
+        fi
+
+        if [ ! -f "${DEPLOY_DIR}/composer.json" ]; then
+            echo "{\"status\":\"error\",\"message\":\"No se encontro composer.json en $DEPLOY_DIR\"}"
+            exit 1
+        fi
+
+        PHP_BIN=$(get_domain_php_bin "$DOMAIN" "$USER")
+        COMPOSER_BIN=$(get_composer_bin)
+        USER_HOME="${DEFAULT_USER_HOME}/${USER}"
+
+        log_info "Ejecutando composer update para $DOMAIN ($USER)..."
+
+        OUTPUT=$(cd "$DEPLOY_DIR" && sudo -u "$USER" HOME="$USER_HOME" COMPOSER_HOME="${USER_HOME}/.composer" "$PHP_BIN" "$COMPOSER_BIN" update --no-interaction --prefer-dist --optimize-autoloader 2>&1)
+        EXEC_CODE=$?
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $EXEC_CODE -eq 0 ]; then
+            log_info "Composer update completado exitosamente para $DOMAIN"
+            echo "{\"status\":\"success\",\"message\":\"Dependencias actualizadas correctamente con Composer\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            log_error "Error en composer update para $DOMAIN: $OUTPUT"
+            echo "{\"status\":\"error\",\"message\":\"Fallo al ejecutar composer update\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    dump-autoload)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        ensure_composer_installed
+        ensure_user_composer_env "$USER"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        PHP_BIN=$(get_domain_php_bin "$DOMAIN" "$USER")
+        COMPOSER_BIN=$(get_composer_bin)
+        USER_HOME="${DEFAULT_USER_HOME}/${USER}"
+
+        log_info "Ejecutando composer dump-autoload para $DOMAIN ($USER)..."
+
+        OUTPUT=$(cd "$DEPLOY_DIR" && sudo -u "$USER" HOME="$USER_HOME" COMPOSER_HOME="${USER_HOME}/.composer" "$PHP_BIN" "$COMPOSER_BIN" dump-autoload -o --no-interaction 2>&1)
+        EXEC_CODE=$?
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $EXEC_CODE -eq 0 ]; then
+            echo "{\"status\":\"success\",\"message\":\"Autoload regenerado exitosamente con Composer\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"Fallo al regenerar autoload\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    require)
+        PACKAGE="$EXTRA_PARAM"
+        [ -z "$PACKAGE" ] && exit_error "Paquete requerido para composer require"
+        ensure_composer_installed
+        ensure_user_composer_env "$USER"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        PHP_BIN=$(get_domain_php_bin "$DOMAIN" "$USER")
+        COMPOSER_BIN=$(get_composer_bin)
+        USER_HOME="${DEFAULT_USER_HOME}/${USER}"
+
+        log_info "Ejecutando composer require $PACKAGE para $DOMAIN..."
+
+        OUTPUT=$(cd "$DEPLOY_DIR" && sudo -u "$USER" HOME="$USER_HOME" COMPOSER_HOME="${USER_HOME}/.composer" "$PHP_BIN" "$COMPOSER_BIN" require "$PACKAGE" --no-interaction --prefer-dist 2>&1)
+        EXEC_CODE=$?
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $EXEC_CODE -eq 0 ]; then
+            echo "{\"status\":\"success\",\"message\":\"Paquete $PACKAGE agregado exitosamente\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"Fallo al agregar paquete $PACKAGE\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    *)
+        usage
+        ;;
+esac

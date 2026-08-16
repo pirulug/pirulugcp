@@ -4,7 +4,7 @@
 setup_php_multiversion() {
     echo "[Paso 4/7] Instalando versiones de PHP-FPM y extensiones (incluye imagick)..."
 
-    apt-get install -y imagemagick
+    apt-get install -y imagemagick unzip zip git curl
 
     local php_versions=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4" "8.5")
     for ver in "${php_versions[@]}"; do
@@ -18,4 +18,11 @@ setup_php_multiversion() {
             systemctl restart "php${ver}-fpm" || true
         fi
     done
+
+    # Instalar Composer globalmente si no existe
+    if ! command -v composer >/dev/null 2>&1 && [ ! -x "/usr/local/bin/composer" ]; then
+        echo "  - Instalando Composer globalmente..."
+        curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer >/dev/null 2>&1 || true
+        chmod +x /usr/local/bin/composer || true
+    fi
 }

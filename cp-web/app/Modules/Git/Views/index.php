@@ -16,6 +16,11 @@ $domainId   = (int)$domain["id"];
             <i class="bi bi-arrow-left me-1"></i> Volver a Dominios
         </a>
         <?php if ($isConnected): ?>
+            <form action="/web/git/composer/<?= $domainId ?>" method="POST" class="d-inline m-0">
+                <button type="submit" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" title="Instalar dependencias de Composer">
+                    <i class="bi bi-box-seam me-1"></i> Composer Install
+                </button>
+            </form>
             <form action="/web/git/deploy/<?= $domainId ?>" method="POST" class="d-inline m-0">
                 <button type="submit" class="btn btn-sm btn-primary text-uppercase fw-bold text-nowrap">
                     <i class="bi bi-cloud-arrow-down me-1"></i> Desplegar Ahora
@@ -62,6 +67,27 @@ $domainId   = (int)$domain["id"];
                         </td>
                     </tr>
                     <tr>
+                        <td class="text-muted">Estado Composer:</td>
+                        <td>
+                            <?php if (!empty($composerStatus["has_composer_json"])): ?>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle me-1">
+                                    <i class="bi bi-check-circle me-1"></i> composer.json detectado
+                                </span>
+                                <?php if (!empty($composerStatus["has_autoload"])): ?>
+                                    <span class="badge bg-info-subtle text-info border border-info-subtle">
+                                        <i class="bi bi-box-seam me-1"></i> vendor instalado
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                                        <i class="bi bi-exclamation-circle me-1"></i> vendor pendiente
+                                    </span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="text-muted small">Sin composer.json en la raiz</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
                         <td class="text-muted">Ultimo Commit:</td>
                         <td>
                             <?php if (!empty($git["last_commit_hash"])): ?>
@@ -93,12 +119,19 @@ $domainId   = (int)$domain["id"];
 
             <hr class="my-3">
 
-            <div class="d-flex justify-content-between align-items-center">
-                <form action="/web/git/deploy/<?= $domainId ?>" method="POST" class="d-inline m-0">
-                    <button type="submit" class="btn btn-sm btn-primary text-uppercase fw-bold">
-                        <i class="bi bi-arrow-repeat me-1"></i> Ejecutar Git Pull Manual
-                    </button>
-                </form>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex gap-2">
+                    <form action="/web/git/deploy/<?= $domainId ?>" method="POST" class="d-inline m-0">
+                        <button type="submit" class="btn btn-sm btn-primary text-uppercase fw-bold">
+                            <i class="bi bi-arrow-repeat me-1"></i> Git Pull
+                        </button>
+                    </form>
+                    <form action="/web/git/composer/<?= $domainId ?>" method="POST" class="d-inline m-0">
+                        <button type="submit" class="btn btn-sm btn-outline-primary text-uppercase fw-bold">
+                            <i class="bi bi-box-seam me-1"></i> Composer Install
+                        </button>
+                    </form>
+                </div>
                 <a href="/web/git/unlink/<?= $domainId ?>" class="btn btn-sm btn-outline-danger text-uppercase fw-bold" onclick="return confirm('Desvincular repositorio de <?= $domainName ?>?')">
                     <i class="bi bi-trash me-1"></i> Desvincular Git
                 </a>
@@ -114,7 +147,7 @@ $domainId   = (int)$domain["id"];
                     <i class="bi bi-lightning-charge me-1"></i> Auto-Deploy (Webhook)
                 </h6>
                 <p class="text-muted small mb-3">
-                    Configura este Webhook en GitHub para que cada <code>git push</code> despliegue automaticamente los cambios en tu servidor.
+                    Configura este Webhook en GitHub para que cada <code>git push</code> despliegue automaticamente los cambios y ejecute Composer en tu servidor.
                 </p>
 
                 <label class="form-label small">URL del Webhook de GitHub:</label>
@@ -201,9 +234,18 @@ $domainId   = (int)$domain["id"];
                     </div>
                 </div>
 
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="composer_install" name="composer_install" value="1" <?= (!isset($git["composer_install"]) || !empty($git["composer_install"])) ? "checked" : "" ?>>
+                        <label class="form-check-label" for="composer_install">
+                            Ejecutar automaticamente <code>composer install</code> si existe <code>composer.json</code>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="alert alert-info py-2 px-3 small mb-3">
                     <i class="bi bi-shield-check me-1"></i>
-                    <strong>Preservacion de Archivos:</strong> Los archivos ignorados por <code>.gitignore</code> o de configuracion local (como <code>config.php</code>, <code>.env</code> o carpetas de subidas) se mantendran siempre intactos durante la sincronizacion.
+                    <strong>Preservacion y Dependencias:</strong> Los archivos ignorados por <code>.gitignore</code> (como <code>config.php</code> o <code>.env</code>) se mantendran intactos y las dependencias de <code>composer.json</code> se instalaran aisladas bajo el usuario del dominio.
                 </div>
 
                 <button type="submit" class="btn btn-primary text-uppercase fw-bold w-100">

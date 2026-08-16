@@ -35,6 +35,26 @@
     </nav>
 
     <div class="d-flex gap-1">
+        <?php
+            $hasComposerJson = false;
+            foreach ($items as $it) {
+                if (!$it["is_dir"] && $it["name"] === "composer.json") {
+                    $hasComposerJson = true;
+                    break;
+                }
+            }
+        ?>
+        <?php if ($hasComposerJson): ?>
+            <form action="/files/composer" method="POST" class="d-inline m-0" onsubmit="return confirm('Ejecutar composer install en este directorio?')">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="action" value="install">
+                <button type="submit" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" title="Instalar dependencias de composer.json">
+                    <i class="bi bi-box-seam me-1"></i> Composer
+                </button>
+            </form>
+        <?php endif; ?>
         <button type="button" class="btn btn-sm btn-primary text-uppercase fw-bold text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadModal">
             <i class="bi bi-cloud-arrow-up me-1"></i> Subir Archivos
         </button>

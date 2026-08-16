@@ -1,21 +1,74 @@
 <?php
 
+// Habilitar visualizacion completa de errores en el panel de control
+ini_set("display_errors", "1");
+ini_set("display_startup_errors", "1");
+error_reporting(E_ALL);
+
+// Manejador global de excepciones no capturadas
+set_exception_handler(function (Throwable $e) {
+  http_response_code(500);
+  ?>
+  <!DOCTYPE html>
+  <html lang="es" data-bs-theme="dark">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error PHP - PiruluGCP</title>
+    <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/assets/css/bootstrap-icons.min.css">
+  </head>
+  <body class="bg-body-tertiary p-4">
+    <div class="container" style="max-width: 900px;">
+      <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white d-flex align-items-center">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <strong>Error PHP / Excepcion no capturada</strong>
+        </div>
+        <div class="card-body">
+          <h5 class="text-danger fw-bold mb-2"><?= $e->getMessage() ?></h5>
+          <p class="text-muted small mb-3">
+            Tipo: <code><?= get_class($e) ?></code> | Codigo: <code><?= $e->getCode() ?></code>
+          </p>
+          <div class="bg-dark p-3 rounded text-light font-monospace small mb-3">
+            <strong>Archivo:</strong> <?= $e->getFile() ?><br>
+            <strong>Linea:</strong> <?= $e->getLine() ?>
+          </div>
+          <h6 class="fw-bold">Pila de Ejecucion (Stack Trace):</h6>
+          <pre class="bg-dark text-light p-3 rounded small font-monospace" style="max-height: 350px; overflow-y: auto;"><code><?= $e->getTraceAsString() ?></code></pre>
+        </div>
+        <div class="card-footer d-flex justify-content-between">
+          <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm text-uppercase fw-bold">
+            <i class="bi bi-arrow-left me-1"></i> Volver
+          </a>
+          <a href="/" class="btn btn-primary btn-sm text-uppercase fw-bold">
+            <i class="bi bi-house me-1"></i> Ir al Dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+  </body>
+  </html>
+  <?php
+  exit();
+});
+
 // Autocarga de clases PSR-4 simple para PiruluGCP
 spl_autoload_register(function ($class) {
-    $prefix = "Pirulu\\";
-    $baseDir = dirname(__DIR__) . "/app/";
+  $prefix = "Pirulu\\";
+  $baseDir = dirname(__DIR__) . "/app/";
 
-    $len = strlen($prefix);
-    if (strncmp($prefix, $class, $len) !== 0) {
-        return;
-    }
+  $len = strlen($prefix);
+  if (strncmp($prefix, $class, $len) !== 0) {
+    return;
+  }
 
-    $relativeClass = substr($class, $len);
-    $file = $baseDir . str_replace("\\", "/", $relativeClass) . ".php";
+  $relativeClass = substr($class, $len);
+  $file = $baseDir . str_replace("\\", "/", $relativeClass) . ".php";
 
-    if (file_exists($file)) {
-        require $file;
-    }
+  if (file_exists($file)) {
+    require $file;
+  }
 });
 
 use Pirulu\Core\Router;
@@ -55,6 +108,7 @@ $router->get("/web/delete/{id}", [WebController::class, "delete"]);
 $router->get("/web/git/{id}", [GitController::class, "index"]);
 $router->post("/web/git/connect", [GitController::class, "connect"]);
 $router->post("/web/git/deploy/{id}", [GitController::class, "deploy"]);
+$router->post("/web/git/composer/{id}", [GitController::class, "composer"]);
 $router->get("/web/git/generate-key/{id}", [GitController::class, "generateKey"]);
 $router->get("/web/git/unlink/{id}", [GitController::class, "unlink"]);
 
@@ -77,6 +131,7 @@ $router->post("/files/compress", [FileManagerController::class, "compressItem"])
 $router->post("/files/extract", [FileManagerController::class, "extractZip"]);
 $router->get("/files/download", [FileManagerController::class, "download"]);
 $router->post("/files/chmod", [FileManagerController::class, "chmod"]);
+$router->post("/files/composer", [FileManagerController::class, "composerAction"]);
 
 // Rutas de PHP-FPM Multi-Version
 $router->get("/php", [PhpController::class, "index"]);

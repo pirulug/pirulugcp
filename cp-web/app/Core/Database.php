@@ -85,6 +85,7 @@ class Database {
                 last_deploy_at DATETIME,
                 last_deploy_status TEXT,
                 last_deploy_log TEXT,
+                composer_install INTEGER NOT NULL DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
             );
@@ -92,6 +93,12 @@ class Database {
 
         try {
             $db->exec("ALTER TABLE domains ADD COLUMN doc_root_suffix TEXT NOT NULL DEFAULT 'public_html'");
+        } catch (PDOException $e) {
+            // Columna ya existe
+        }
+
+        try {
+            $db->exec("ALTER TABLE domain_git ADD COLUMN composer_install INTEGER NOT NULL DEFAULT 1");
         } catch (PDOException $e) {
             // Columna ya existe
         }
