@@ -1,6 +1,6 @@
 # Guía de Despliegue de PiruluGCP en Debian (VirtualBox)
 
-Guía paso a paso para desplegar y probar PiruluGCP en una máquina virtual limpia con Debian 13 (Trixie) o Debian 12 en VirtualBox.
+Guía paso a paso para desplegar y probar PiruluGCP en una máquina virtual limpia con Debian 13 (Trixie) o Debian 12 en VirtualBox, configurando el usuario de administración dedicado `pirulugcp` para evitar el uso directo de `root`.
 
 ---
 
@@ -66,7 +66,8 @@ chmod +x install.sh install/modules/*.sh && \
 
 *(Si deseas probar el código local de Windows en lugar del repositorio remoto, sincronízalo directamente por `rsync` hacia la VM: `rsync -av --exclude='.git' /ruta/local/ root@192.168.1.150:/tmp/pirulugcp/`).*
 
-### Servicios configurados automáticamente por el instalador:
+### ¿Qué configura el instalador automáticamente?
+- **Usuario del Sistema `pirulugcp`:** Crea el usuario del sistema operativo `pirulugcp` con directorio home `/home/pirulugcp`, acceso a `sudo` sin contraseña y permisos de administración para no requerir `root`.
 - **Nginx:** Proxy reverso en puertos `80` (HTTP) y `443` (HTTPS).
 - **Apache 2:** Servidor backend en puerto `8080`.
 - **MariaDB Server:** Base de datos relacional.
@@ -76,7 +77,24 @@ chmod +x install.sh install/modules/*.sh && \
 
 ---
 
-## Paso 5: Acceder al Panel de Control
+## Paso 5: Administración del Sistema sin Root (Usuario `pirulugcp`)
+
+Para realizar tareas administrativas en el servidor Linux por SSH, utiliza el usuario dedicado:
+
+```bash
+ssh pirulugcp@192.168.1.150
+```
+
+### Credenciales del Sistema Linux:
+- **Usuario SSH:** `pirulugcp`
+- **Contraseña inicial:** `pirulugcp`
+- **Permisos administrativos:** Habilitado con `sudo` sin contraseña.
+
+*(Para cambiar la contraseña del usuario en cualquier momento, ejecuta: `passwd pirulugcp`).*
+
+---
+
+## Paso 6: Acceder al Panel de Control Web
 
 Abre el navegador web en Windows e ingresa a:
 
@@ -85,13 +103,13 @@ http://192.168.1.150:8083
 ```
 *(Reemplaza `192.168.1.150` por la IP real de tu máquina virtual).*
 
-### Credenciales por defecto:
+### Credenciales del Panel Web:
 - **Usuario:** `admin`
 - **Contraseña:** `admin123`
 
 ---
 
-## Paso 6: Probar la Creación de Dominios
+## Paso 7: Probar la Creación de Dominios
 
 1. Dentro de PiruluGCP, dirígete a **Gestión Web** &rarr; **Nuevo Dominio** y crea un dominio de prueba (ejemplo: `misitio.test`).
 2. En tu computadora Windows, abre el **Bloc de notas** como **Administrador** y edita el archivo:
@@ -102,4 +120,4 @@ http://192.168.1.150:8083
    ```text
    192.168.1.150 misitio.test
    ```
-4. Abre `http://misitio.test` en tu navegador para verificar el funcionamiento del stack completo (Nginx + Apache + PHP-FPM), el seguimiento de peticiones y la depuración SQL en vivo desde el panel.
+4. Abre `http://misitio.test` en tu navegador para verificar el funcionamiento del stack completo (Nginx + Apache + PHP-FPM), la gestión de alias y redirecciones, y la depuración en vivo.

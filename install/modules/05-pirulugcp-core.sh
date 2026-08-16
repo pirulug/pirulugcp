@@ -19,11 +19,25 @@ deploy_pirulugcp_core() {
     # Permisos ejecutables para el Engine
     chmod +x "${PIRULU_INSTALL_DIR}/engine/bin/"*
 
-    # Permisos sudoers para www-data (sin PTY ni password)
+    # Crear usuario de administracion del sistema 'pirulugcp' si no existe
+    if ! id -u pirulugcp >/dev/null 2>&1; then
+        echo "Creando usuario de administracion del sistema 'pirulugcp'..."
+        useradd -m -s /bin/bash -d /home/pirulugcp pirulugcp
+        echo "pirulugcp:pirulugcp" | chpasswd 2>/dev/null || true
+    fi
+
+    # Asignar grupos de administracion y servidor web
+    usermod -aG sudo pirulugcp 2>/dev/null || usermod -aG wheel pirulugcp 2>/dev/null || true
+    usermod -aG www-data pirulugcp 2>/dev/null || true
+
+    # Permisos sudoers para pirulugcp y www-data (sin PTY ni password)
     local sudoers_file="/etc/sudoers.d/pirulugcp"
     cat <<EOF > "$sudoers_file"
+Defaults:pirulugcp !use_pty
+Defaults:pirulugcp !requiretty
 Defaults:www-data !use_pty
 Defaults:www-data !requiretty
+pirulugcp ALL=(ALL) NOPASSWD: ALL
 www-data ALL=(ALL) NOPASSWD: ${PIRULU_INSTALL_DIR}/engine/bin/*
 EOF
     chmod 0440 "$sudoers_file"
