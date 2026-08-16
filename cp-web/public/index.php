@@ -28,6 +28,7 @@ use Pirulu\Modules\System\Controllers\SystemController;
 use Pirulu\Modules\Logs\Controllers\LogsController;
 use Pirulu\Modules\FileManager\Controllers\FileManagerController;
 use Pirulu\Modules\Firewall\Controllers\FirewallController;
+use Pirulu\Modules\Git\Controllers\GitController;
 
 $router = new Router();
 
@@ -49,6 +50,17 @@ $router->post("/web/update-docroot", [WebController::class, "updateDocRoot"]);
 $router->get("/web/enable-ssl/{id}", [WebController::class, "enableSsl"]);
 $router->get("/web/disable-ssl/{id}", [WebController::class, "disableSsl"]);
 $router->get("/web/delete/{id}", [WebController::class, "delete"]);
+
+// Rutas de Integracion Git (GitHub / GitLab / Bitbucket)
+$router->get("/web/git/{id}", [GitController::class, "index"]);
+$router->post("/web/git/connect", [GitController::class, "connect"]);
+$router->post("/web/git/deploy/{id}", [GitController::class, "deploy"]);
+$router->get("/web/git/generate-key/{id}", [GitController::class, "generateKey"]);
+$router->get("/web/git/unlink/{id}", [GitController::class, "unlink"]);
+
+// Endpoint publico para Webhooks de GitHub (Auto-Deploy)
+$router->get("/api/git/webhook/{token}", [GitController::class, "webhook"]);
+$router->post("/api/git/webhook/{token}", [GitController::class, "webhook"]);
 
 // Rutas de Gestor de Archivos (File Manager)
 $router->get("/files", [FileManagerController::class, "index"]);

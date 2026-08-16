@@ -13,9 +13,10 @@ class WebController {
         $db = Database::getConnection();
 
         $domains = $db->query("
-            SELECT d.*, u.username 
+            SELECT d.*, u.username, g.id as git_id, g.branch as git_branch, g.last_deploy_status as git_status
             FROM domains d 
             LEFT JOIN users u ON d.user_id = u.id 
+            LEFT JOIN domain_git g ON d.id = g.domain_id
             ORDER BY d.id DESC
         ")->fetchAll();
 

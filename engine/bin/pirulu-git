@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# Gestor de Repositorios Git (GitHub / GitLab / Bitbucket) para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+DOMAIN="$3"
+
+usage() {
+    echo "Uso: pirulu-git <accion> <usuario> <dominio> [argumentos]"
+    echo "Acciones:"
+    echo "  generate-key <user> <domain>                           Generar par de claves SSH para el dominio"
+    echo "  get-key      <user> <domain>                           Obtener clave publica SSH existente"
+    echo "  clone        <user> <domain> <repo_url> <branch> [dir] Clonar repositorio en la carpeta del dominio"
+    echo "  pull         <user> <domain> [branch] [dir]            Actualizar codigo desde el repositorio remoto"
+    echo "  status       <user> <domain> [dir]                     Obtener estado del repositorio Git"
+    echo "  unlink       <user> <domain> [dir]                     Desvincular repositorio Git (eliminar .git)"
+    exit 1
+}
+
+[ -z "$ACTION" ] || [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+
+SSH_DIR="${DEFAULT_USER_HOME}/${USER}/.ssh"
+KEY_PATH="${SSH_DIR}/id_deploy_${DOMAIN}"
+PUB_KEY_PATH="${KEY_PATH}.pub"
+
+setup_user_ssh_env() {
+    mkdir -p "$SSH_DIR"
+    chmod 700 "$SSH_DIR"
+    touch "${SSH_DIR}/known_hosts"
+    chmod 644 "${SSH_DIR}/known_hosts"
+
+    # Registrar known_hosts para GitHub, GitLab y Bitbucket de forma no interactiva
+    for host in "github.com" "gitlab.com" "bitbucket.org"; do
+        if ! grep -q "$host" "${SSH_DIR}/known_hosts" 2>/dev/null; then
+            ssh-keyscan -H "$host" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+        fi
+    done
+
+    chown -R "${USER}:${USER}" "$SSH_DIR"
+}
+
+get_git_ssh_command() {
+    if [ -f "$KEY_PATH" ]; then
+        echo "ssh -i ${KEY_PATH} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${SSH_DIR}/known_hosts"
+    else
+        echo "ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${SSH_DIR}/known_hosts"
+    fi
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+case "$ACTION" in
+    generate-key)
+        setup_user_ssh_env
+        rm -f "$KEY_PATH" "$PUB_KEY_PATH"
+
+        ssh-keygen -t ed25519 -N "" -f "$KEY_PATH" -C "deploy_${DOMAIN}_pirulugcp" >/dev/null 2>&1
+        chmod 600 "$KEY_PATH"
+        chmod 644 "$PUB_KEY_PATH"
+        chown "${USER}:${USER}" "$KEY_PATH" "$PUB_KEY_PATH"
+
+        PUB_KEY=$(cat "$PUB_KEY_PATH" 2>/dev/null)
+        log_info "Clave SSH generada para $DOMAIN (Usuario: $USER)"
+        echo "{\"status\":\"success\",\"public_key\":\"$(json_escape "$PUB_KEY")\",\"key_path\":\"$(json_escape "$KEY_PATH")\"}"
+        ;;
+
+    get-key)
+        if [ -f "$PUB_KEY_PATH" ]; then
+            PUB_KEY=$(cat "$PUB_KEY_PATH" 2>/dev/null)
+            echo "{\"status\":\"success\",\"public_key\":\"$(json_escape "$PUB_KEY")\",\"key_path\":\"$(json_escape "$KEY_PATH")\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"No existe clave SSH para este dominio\"}"
+        fi
+        ;;
+
+    clone)
+        REPO_URL="$4"
+        BRANCH="$5"
+        DEPLOY_SUFFIX="${6:-public_html}"
+
+        [ -z "$REPO_URL" ] && usage
+        [ -z "$BRANCH" ] && BRANCH="main"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+        mkdir -p "$DEPLOY_DIR"
+        setup_user_ssh_env
+
+        export GIT_TERMINAL_PROMPT=0
+        export GIT_SSH_COMMAND="$(get_git_ssh_command)"
+
+        OUTPUT=""
+        CLONE_SUCCESS=0
+
+        # Limpiar contenido anterior para clonacion limpia sin conflictos de ramas ni archivos no rastreados
+        rm -rf "${DEPLOY_DIR:?}"/* "${DEPLOY_DIR:?}"/.[!.]* 2>/dev/null || true
+
+        OUTPUT=$(git clone --branch "$BRANCH" "$REPO_URL" "$DEPLOY_DIR" 2>&1)
+        CLONE_SUCCESS=$?
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $CLONE_SUCCESS -eq 0 ]; then
+            cd "$DEPLOY_DIR" || exit 1
+            COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null)
+            COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null)
+            COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
+
+            log_info "Repositorio clonado con exito para $DOMAIN ($REPO_URL, rama $BRANCH)"
+            echo "{\"status\":\"success\",\"message\":\"Repositorio clonado correctamente\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            ERROR_MSG="Error al clonar el repositorio"
+            if echo "$OUTPUT" | grep -qi "could not read Username\|Authentication failed"; then
+                ERROR_MSG="Error de autenticacion: El repositorio es privado o requiere acceso. Marca la casilla 'Privado (Usa Clave SSH)' y agrega la Clave SSH en GitHub (Settings > Deploy Keys)."
+            elif echo "$OUTPUT" | grep -qi "Permission denied (publickey)"; then
+                ERROR_MSG="Permiso denegado: La clave SSH de despliegue no esta agregada en GitHub o no tiene permisos. Copia la clave publica SSH y agregala en GitHub (Settings > Deploy Keys de tu repositorio)."
+            fi
+
+            log_error "Error al clonar repositorio para $DOMAIN: $OUTPUT"
+            echo "{\"status\":\"error\",\"message\":\"$(json_escape "$ERROR_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    pull)
+        BRANCH="$4"
+        DEPLOY_SUFFIX="${5:-public_html}"
+
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+
+        if [ ! -d "${DEPLOY_DIR}/.git" ]; then
+            echo "{\"status\":\"error\",\"message\":\"El directorio no es un repositorio Git valido\"}"
+            exit 1
+        fi
+
+        setup_user_ssh_env
+        export GIT_SSH_COMMAND="$(get_git_ssh_command)"
+
+        cd "$DEPLOY_DIR" || exit 1
+
+        [ -z "$BRANCH" ] && BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+
+        FETCH_OUT=$(git fetch origin "$BRANCH" 2>&1)
+        RESET_OUT=$(git reset --hard "origin/${BRANCH}" 2>&1)
+        PULL_STATUS=$?
+        OUTPUT="${FETCH_OUT}\n${RESET_OUT}"
+
+        chown -R "${USER}:${USER}" "$DEPLOY_DIR"
+
+        if [ $PULL_STATUS -eq 0 ]; then
+            COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null)
+            COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null)
+            COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
+
+            log_info "Despliegue (pull) completado para $DOMAIN ($BRANCH, commit $COMMIT_HASH)"
+            echo "{\"status\":\"success\",\"message\":\"Despliegue completado exitosamente\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        else
+            log_error "Error en git pull para $DOMAIN: $OUTPUT"
+            echo "{\"status\":\"error\",\"message\":\"Error al actualizar repositorio\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        fi
+        ;;
+
+    status)
+        DEPLOY_SUFFIX="${4:-public_html}"
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+
+        if [ ! -d "${DEPLOY_DIR}/.git" ]; then
+            echo "{\"status\":\"not-connected\",\"message\":\"No hay repositorio Git conectado\"}"
+            exit 0
+        fi
+
+        cd "$DEPLOY_DIR" || exit 1
+        REMOTE_URL=$(git remote get-url origin 2>/dev/null)
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null)
+        COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null)
+        COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null)
+        COMMIT_DATE=$(git log -1 --format="%cd" 2>/dev/null)
+
+        echo "{\"status\":\"success\",\"connected\":true,\"remote_url\":\"$(json_escape "$REMOTE_URL")\",\"branch\":\"$(json_escape "$CURRENT_BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"commit_date\":\"$(json_escape "$COMMIT_DATE")\"}"
+        ;;
+
+    unlink)
+        DEPLOY_SUFFIX="${4:-public_html}"
+        DEPLOY_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DEPLOY_SUFFIX}"
+
+        if [ -d "${DEPLOY_DIR}/.git" ]; then
+            rm -rf "${DEPLOY_DIR}/.git"
+        fi
+        rm -f "$KEY_PATH" "$PUB_KEY_PATH"
+
+        log_info "Repositorio Git desvinculado de $DOMAIN"
+        echo "{\"status\":\"success\",\"message\":\"Repositorio desvinculado correctamente\"}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

@@ -67,6 +67,27 @@ class Database {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
+
+            CREATE TABLE IF NOT EXISTS domain_git (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain_id INTEGER UNIQUE NOT NULL,
+                repo_url TEXT NOT NULL,
+                branch TEXT NOT NULL DEFAULT 'main',
+                deploy_suffix TEXT NOT NULL DEFAULT 'public_html',
+                is_private INTEGER NOT NULL DEFAULT 0,
+                ssh_public_key TEXT,
+                ssh_private_key_path TEXT,
+                webhook_secret TEXT UNIQUE NOT NULL,
+                auto_deploy INTEGER NOT NULL DEFAULT 1,
+                last_commit_hash TEXT,
+                last_commit_message TEXT,
+                last_commit_author TEXT,
+                last_deploy_at DATETIME,
+                last_deploy_status TEXT,
+                last_deploy_log TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
+            );
         ");
 
         try {

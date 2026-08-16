@@ -81,6 +81,12 @@
                             </td>
                             <td class="text-end pe-3 text-nowrap">
                                 <div class="d-flex justify-content-end gap-1">
+                                    <a href="/web/git/<?= (int)$d["id"] ?>" class="btn btn-sm <?= !empty($d["git_id"]) ? "btn-outline-dark text-dark border-dark-subtle" : "btn-outline-secondary" ?> text-uppercase fw-bold text-nowrap" title="Integracion y despliegue Git">
+                                        <i class="bi bi-github me-1"></i> Git
+                                        <?php if (!empty($d["git_id"])): ?>
+                                            <span class="badge bg-success ms-1 p-1"><i class="bi bi-check2"></i></span>
+                                        <?php endif; ?>
+                                    </a>
                                     <a href="/files?domain=<?= urlencode($d["domain"]) ?>" class="btn btn-sm btn-outline-info text-uppercase fw-bold text-nowrap" title="Explorar y subir archivos">
                                         <i class="bi bi-folder2-open me-1"></i> Archivos
                                     </a>

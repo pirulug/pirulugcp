@@ -150,6 +150,36 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-git") {
+            if ($action === "generate-key" || $action === "get-key") {
+                return [
+                    "status"     => "success",
+                    "public_key" => "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGitDeployKeySimulatedForPiruluGCPExampleKey deploy@pirulugcp",
+                    "key_path"   => "/home/admin/.ssh/id_deploy_example"
+                ];
+            }
+            if ($action === "status") {
+                return [
+                    "status"         => "success",
+                    "connected"      => true,
+                    "remote_url"     => "https://github.com/example/repo.git",
+                    "branch"         => "main",
+                    "commit_hash"    => "a1b2c3d4e5f67890123456789abcdef012345678",
+                    "commit_author"  => "Developer",
+                    "commit_message" => "Update production code",
+                    "commit_date"    => date("Y-m-d H:i:s")
+                ];
+            }
+            return [
+                "status"         => "success",
+                "message"        => "Operacion Git completada en modo simulacion",
+                "commit_hash"    => "a1b2c3d4e5f67890123456789abcdef012345678",
+                "commit_author"  => "Developer",
+                "commit_message" => "Update production code",
+                "log"            => "Already up to date."
+            ];
+        }
+
         return [
             "status"  => "success",
             "message" => "Operacion completada exitosamente (Modo desarrollo)"
