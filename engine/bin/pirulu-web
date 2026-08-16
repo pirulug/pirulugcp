@@ -145,7 +145,8 @@ case "$ACTION" in
             create_default_index "$DOC_ROOT" "$DOMAIN" "$USER"
         fi
 
-        # 1. Crear Pool de PHP-FPM
+        # 1. Crear Pool de PHP-FPM con aislamiento del dominio
+        "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
         "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$PHP_VERSION" "$DOC_ROOT" "$FPM_SOCKET"
 
         # 2. Configurar Backend Apache (puerto 8080)
@@ -193,16 +194,17 @@ case "$ACTION" in
         chown -R "${USER}:${USER}" "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
         chmod 755 "$NEW_DOC_ROOT"
 
-        # Detectar el socket FPM activo del dominio
-        DETECTED_SOCKET=""
+        # Detectar la version de PHP activa para este dominio
+        DETECTED_PHP=""
         if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
-            DETECTED_SOCKET=$(grep -oE '/run/php/php[0-9.]+-fpm-[^.]+\.[^"|]+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | head -n 1)
+            DETECTED_PHP=$(grep -oE '/run/php/php[0-9.]+-fpm' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | head -n 1 | grep -oE '[0-9.]+')
         fi
-        if [ -n "$DETECTED_SOCKET" ]; then
-            CURRENT_FPM_SOCKET="$DETECTED_SOCKET"
-        else
-            CURRENT_FPM_SOCKET="/run/php/php${DEFAULT_PHP_VERSION}-fpm-${USER}-${DOMAIN}.sock"
-        fi
+        ACTIVE_PHP="${DETECTED_PHP:-$DEFAULT_PHP_VERSION}"
+        CURRENT_FPM_SOCKET="/run/php/php${ACTIVE_PHP}-fpm-${USER}-${DOMAIN}.sock"
+
+        # Actualizar pool PHP-FPM con la nueva ruta base
+        "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$ACTIVE_PHP" "$NEW_DOC_ROOT" "$CURRENT_FPM_SOCKET"
 
         # Crear index.php en el nuevo docroot si esta vacio
         if [ ! -f "${NEW_DOC_ROOT}/index.php" ] && [ ! -f "${NEW_DOC_ROOT}/index.html" ]; then
@@ -257,15 +259,14 @@ case "$ACTION" in
         if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
             DETECTED_DOCROOT=$(grep -E '^\s*DocumentRoot\s+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | awk '{print $2}' | head -n 1)
         fi
-        if [ -n "$DETECTED_DOCROOT" ]; then
-            ACTIVE_DOC_ROOT="$DETECTED_DOCROOT"
-        else
-            ACTIVE_DOC_ROOT="$DOC_ROOT"
-        fi
+        ACTIVE_DOC_ROOT="${DETECTED_DOCROOT:-$DOC_ROOT}"
 
         log_info "Cambiando PHP para $DOMAIN a $NEW_PHP (Root: $ACTIVE_DOC_ROOT)"
         NEW_SOCKET="/run/php/php${NEW_PHP}-fpm-${USER}-${DOMAIN}.sock"
+
+        # Eliminar pool de cualquier otra version de PHP para este dominio
         "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
+        # Crear pool en la nueva version de PHP con aislamiento
         "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$NEW_PHP" "$ACTIVE_DOC_ROOT" "$NEW_SOCKET"
 
         if [ -d "/etc/apache2" ]; then
