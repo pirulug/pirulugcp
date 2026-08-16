@@ -63,6 +63,12 @@ case "$ACTION" in
         POOL_DIR="/etc/php/${VERSION}/fpm/pool.d"
         POOL_FILE="${POOL_DIR}/${POOL_NAME}.conf"
 
+        # Asegurar directorio temporal exclusivo del usuario
+        USER_TMP="${DEFAULT_USER_HOME}/${USER}/tmp"
+        mkdir -p "$USER_TMP"
+        chown "${USER}:${USER}" "$USER_TMP"
+        chmod 750 "$USER_TMP"
+
         mkdir -p "$POOL_DIR"
 
         sed -e "s|%POOL_NAME%|${POOL_NAME}|g" \

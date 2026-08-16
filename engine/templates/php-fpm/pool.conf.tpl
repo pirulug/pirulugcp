@@ -14,11 +14,11 @@ pm.max_requests = 500
 
 chdir = /
 
-; Aislamiento: permite acceso al directorio web completo del dominio
-; incluyendo directorios padre (ej. vendor de Composer fuera del docroot)
-php_admin_value[open_basedir] = %WEB_ROOT%:/tmp:/var/tmp
-php_admin_value[upload_tmp_dir] = /tmp
-php_admin_value[session.save_path] = /tmp
+; Aislamiento estricto: restringido a la carpeta del dominio y al directorio temporal propio del usuario
+php_admin_value[open_basedir] = %WEB_ROOT%:/home/%USER%/tmp
+php_admin_value[upload_tmp_dir] = /home/%USER%/tmp
+php_admin_value[session.save_path] = /home/%USER%/tmp
+php_admin_value[sys_temp_dir] = /home/%USER%/tmp
 php_admin_value[memory_limit] = 256M
 php_admin_value[upload_max_filesize] = 64M
 php_admin_value[post_max_size] = 64M
