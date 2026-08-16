@@ -69,6 +69,8 @@ $router->get("/php/restart/{version}", [PhpController::class, "restart"]);
 $router->get("/database", [DatabaseController::class, "index"]);
 $router->get("/database/create", [DatabaseController::class, "create"]);
 $router->post("/database/store", [DatabaseController::class, "store"]);
+$router->get("/database/edit/{id}", [DatabaseController::class, "edit"]);
+$router->post("/database/update/{id}", [DatabaseController::class, "update"]);
 $router->get("/database/autologin/{id}", [DatabaseController::class, "autologin"]);
 $router->get("/pma", [DatabaseController::class, "pmaRedirect"]);
 $router->get("/database/delete/{id}", [DatabaseController::class, "delete"]);

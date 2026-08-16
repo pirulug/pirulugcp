@@ -33,7 +33,7 @@ class DatabaseController {
     $users = $db->query("SELECT id, username FROM users ORDER BY username ASC")->fetchAll();
 
     View::render("Modules/Database/Views/create", [
-      "pageTitle" => "Crear Base de Datos MariaDB - PiruluGCP",
+      "pageTitle" => "Anadir Base de Datos - PiruluGCP",
       "users" => $users
     ]);
   }
@@ -53,7 +53,13 @@ class DatabaseController {
       exit();
     }
 
-    // Obtener usuario del sistema para prefijo opcional
+    if (strlen($dbPass) < 8) {
+      View::setFlash("danger", "La contrasena debe contener al menos 8 caracteres.");
+      header("Location: /database/create");
+      exit();
+    }
+
+    // Obtener usuario del sistema para prefijo obligatorio
     $stmt = $db->prepare("SELECT username FROM users WHERE id = ?");
     $stmt->execute([$userId]);
     $userRow = $stmt->fetch();
@@ -71,6 +77,82 @@ class DatabaseController {
       View::setFlash("success", "Base de datos " . htmlspecialchars($fullDbName) . " creada exitosamente.");
     } else {
       View::setFlash("danger", "Error al crear la base de datos en MariaDB.");
+    }
+
+    header("Location: /database");
+    exit();
+  }
+
+  public function edit(string $id): void {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT d.*, u.username FROM databases d LEFT JOIN users u ON d.user_id = u.id WHERE d.id = ?");
+    $stmt->execute([(int)$id]);
+    $database = $stmt->fetch();
+
+    if (!$database) {
+      View::setFlash("danger", "Base de datos no encontrada.");
+      header("Location: /database");
+      exit();
+    }
+
+    $username = $database["username"] ?? "admin";
+    $prefix = $username . "_";
+
+    $shortDbName = $database["db_name"];
+    if (strpos($shortDbName, $prefix) === 0) {
+      $shortDbName = substr($shortDbName, strlen($prefix));
+    }
+
+    $shortDbUser = $database["db_user"];
+    if (strpos($shortDbUser, $prefix) === 0) {
+      $shortDbUser = substr($shortDbUser, strlen($prefix));
+    }
+
+    View::render("Modules/Database/Views/edit", [
+      "pageTitle" => "Editar Bases de Datos - PiruluGCP",
+      "database" => $database,
+      "prefix" => $prefix,
+      "shortDbName" => $shortDbName,
+      "shortDbUser" => $shortDbUser
+    ]);
+  }
+
+  public function update(string $id): void {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT * FROM databases WHERE id = ?");
+    $stmt->execute([(int)$id]);
+    $dbRow = $stmt->fetch();
+
+    if (!$dbRow) {
+      View::setFlash("danger", "Base de datos no encontrada.");
+      header("Location: /database");
+      exit();
+    }
+
+    $dbPass = trim($_POST["db_password"] ?? "");
+
+    if (!empty($dbPass)) {
+      if (strlen($dbPass) < 8) {
+        View::setFlash("danger", "La contrasena debe contener al menos 8 caracteres.");
+        header("Location: /database/edit/" . (int)$id);
+        exit();
+      }
+
+      $res = Engine::execute("pirulu-db", ["passwd", $dbRow["db_user"], $dbPass]);
+      if (isset($res["status"]) && $res["status"] === "success") {
+        $encPass = self::encryptPassword($dbPass);
+        $stmt = $db->prepare("UPDATE databases SET db_password_enc = ? WHERE id = ?");
+        $stmt->execute([$encPass, (int)$id]);
+        View::setFlash("success", "Contrasena de la base de datos " . htmlspecialchars($dbRow["db_name"]) . " actualizada exitosamente.");
+      } else {
+        View::setFlash("danger", "Error al actualizar la contrasena en MariaDB.");
+      }
+    } else {
+      View::setFlash("info", "No se realizaron cambios en la base de datos.");
     }
 
     header("Location: /database");

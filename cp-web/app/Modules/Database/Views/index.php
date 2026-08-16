@@ -50,6 +50,9 @@
                                     <a href="/database/autologin/<?= (int)$db["id"] ?>" target="_blank" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" title="Abrir phpMyAdmin">
                                         <i class="bi bi-box-arrow-up-right me-1"></i> phpMyAdmin
                                     </a>
+                                    <a href="/database/edit/<?= (int)$db["id"] ?>" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" title="Editar Base de Datos">
+                                        <i class="bi bi-pencil me-1"></i> Editar
+                                    </a>
                                     <a href="/database/delete/<?= (int)$db["id"] ?>" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" onclick="return confirm('Estas seguro de eliminar la base de datos <?= htmlspecialchars($db["db_name"]) ?>? Esta accion borrara todas las tablas y datos.')" title="Eliminar Base de Datos">
                                         <i class="bi bi-trash me-1"></i> Eliminar
                                     </a>
