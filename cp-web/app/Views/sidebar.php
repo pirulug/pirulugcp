@@ -20,6 +20,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
         </a>
       </li>
 
+      <li class="sidebar-item <?= (strpos($currentUri, "/account") === 0) ? "active" : "" ?>">
+        <a class="sidebar-link" href="/account/profile">
+          <i class="align-middle bi bi-person-gear"></i>
+          <span class="align-middle">Mi Cuenta</span>
+        </a>
+      </li>
+
       <li class="sidebar-header">Gestion Web</li>
 
       <li class="sidebar-item <?= (strpos($currentUri, "/web") === 0) ? "active" : "" ?>">

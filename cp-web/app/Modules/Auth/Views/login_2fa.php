@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <meta name="author" content="Pirulug">
-  <title>Iniciar Sesion - PiruluGCP Control Panel</title>
+  <title>Verificación en Dos Pasos (2FA) - PiruluGCP Control Panel</title>
 
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon/favicon-32x32.png">
   <link rel="stylesheet" href="/assets/plugins/bootstrapicons.css">
@@ -27,10 +27,11 @@
         <div class="card mb-3">
           <div class="card-body">
             <div class="text-center mb-3">
-              <h2 class="fw-bold mb-1">
-                Pirulu<span class="text-primary">GCP</span>
-              </h2>
-              <p class="text-muted small">Panel de Control de Hosting y Servidores</p>
+              <div class="avatar bg-primary-subtle text-primary border border-primary-subtle d-inline-flex align-items-center justify-content-center rounded-circle mb-2" style="width: 54px; height: 54px; font-size: 1.5rem;">
+                <i class="bi bi-shield-lock-fill"></i>
+              </div>
+              <h4 class="fw-bold mb-1">Verificación en Dos Pasos</h4>
+              <p class="text-muted small mb-0">Ingresa el código de 6 dígitos de tu aplicación autenticadora (Google Authenticator, Authy, etc.).</p>
             </div>
 
             <?php if (!empty($error)): ?>
@@ -40,33 +41,33 @@
               </div>
             <?php endif; ?>
 
-            <form action="/login" method="POST">
+            <form action="/login/2fa" method="POST">
               <div class="mb-3">
-                <label for="username" class="form-label">Usuario <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="username" name="username" placeholder="admin" required autofocus value="admin">
+                <label for="two_factor_code" class="form-label text-center d-block">Código de Seguridad <span class="text-danger">*</span></label>
+                <input type="text" 
+                       class="form-control form-control-lg font-monospace text-center fw-bold fs-3" 
+                       id="two_factor_code" 
+                       name="code" 
+                       placeholder="123456" 
+                       maxlength="6" 
+                       pattern="[0-9]{6}" 
+                       inputmode="numeric" 
+                       autocomplete="one-time-code" 
+                       required 
+                       autofocus>
               </div>
-
-              <div class="mb-3">
-                <label for="user_password" class="form-label">Contraseña <span class="text-danger">*</span></label>
-                <input type="password" class="form-control" id="user_password" name="password" placeholder="Tu contraseña" data-pr-toggle-password required value="admin123">
-              </div>
-
-              <?php if (!empty($cfTurnstileEnabled) && !empty($cfSiteKey)): ?>
-                <div class="mb-3 d-flex justify-content-center">
-                  <div class="cf-turnstile" data-sitekey="<?= $cfSiteKey ?>" data-theme="auto"></div>
-                </div>
-                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-              <?php endif; ?>
 
               <div class="d-grid mt-3">
                 <button type="submit" class="btn btn-primary text-uppercase fw-bold">
-                  <i class="bi bi-box-arrow-in-right me-1"></i> Iniciar Sesión
+                  <i class="bi bi-check-circle me-1"></i> Verificar e Iniciar Sesión
                 </button>
               </div>
             </form>
 
-            <div class="text-center mt-3">
-              <span class="text-muted small">Credenciales por defecto: <code>admin</code> / <code>admin123</code></span>
+            <div class="text-center mt-3 pt-2 border-top">
+              <a href="/logout" class="text-decoration-none small text-muted">
+                <i class="bi bi-arrow-left me-1"></i> Volver a inicio de sesión
+              </a>
             </div>
           </div>
         </div>

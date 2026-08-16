@@ -62,8 +62,22 @@ $currentUser = Auth::user();
         </a>
         <div class="dropdown-menu dropdown-menu-end">
           <div class="dropdown-header text-muted small">
-            Rol: <strong><?= $currentUser["role"] ?? "admin" ?></strong>
+            <div><strong><?= $currentUser["name"] ?? ($currentUser["username"] ?? "Administrador") ?></strong></div>
+            <div class="font-monospace small opacity-75"><?= $currentUser["email"] ?? "" ?></div>
           </div>
+          <div class="dropdown-divider"></div>
+          <a class="dropdown-item" href="/account/profile">
+            <i class="bi bi-person me-2"></i>
+            Mi Perfil
+          </a>
+          <a class="dropdown-item" href="/account/password">
+            <i class="bi bi-key me-2"></i>
+            Cambiar Contraseña
+          </a>
+          <a class="dropdown-item" href="/account/security">
+            <i class="bi bi-shield-lock me-2"></i>
+            Seguridad & CAPTCHA
+          </a>
           <div class="dropdown-divider"></div>
           <a class="dropdown-item" href="/dashboard">
             <i class="bi bi-sliders me-2"></i>
@@ -73,14 +87,10 @@ $currentUser = Auth::user();
             <i class="bi bi-hdd-stack me-2"></i>
             Estado del Servidor
           </a>
-          <a class="dropdown-item" href="/logs">
-            <i class="bi bi-journal-text me-2"></i>
-            Logs del Servidor
-          </a>
           <div class="dropdown-divider"></div>
           <a class="dropdown-item text-danger" href="/logout">
             <i class="bi bi-box-arrow-right me-2"></i>
-            Cerrar Sesion
+            Cerrar Sesión
           </a>
         </div>
       </li>

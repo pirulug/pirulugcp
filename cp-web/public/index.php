@@ -86,13 +86,27 @@ use Pirulu\Modules\Server\Controllers\ServerController;
 use Pirulu\Modules\Mail\Controllers\MailController;
 use Pirulu\Modules\Cron\Controllers\CronController;
 use Pirulu\Modules\Ftp\Controllers\FtpController;
+use Pirulu\Modules\Account\Controllers\AccountController;
 
 $router = new Router();
 
 // Rutas de Autenticacion
 $router->get("/login", [AuthController::class, "showLogin"]);
 $router->post("/login", [AuthController::class, "login"]);
+$router->get("/login/2fa", [AuthController::class, "show2fa"]);
+$router->post("/login/2fa", [AuthController::class, "verify2fa"]);
 $router->get("/logout", [AuthController::class, "logout"]);
+
+// Rutas de Mi Cuenta / Perfil / Contraseña / Seguridad & 2FA
+$router->get("/account", [AccountController::class, "profile"]);
+$router->get("/account/profile", [AccountController::class, "profile"]);
+$router->post("/account/profile", [AccountController::class, "updateProfile"]);
+$router->get("/account/password", [AccountController::class, "password"]);
+$router->post("/account/password", [AccountController::class, "updatePassword"]);
+$router->get("/account/security", [AccountController::class, "security"]);
+$router->post("/account/security", [AccountController::class, "updateSecurity"]);
+$router->post("/account/2fa/enable", [AccountController::class, "enable2fa"]);
+$router->post("/account/2fa/disable", [AccountController::class, "disable2fa"]);
 
 // Rutas de Dashboard
 $router->get("/", [DashboardController::class, "index"]);

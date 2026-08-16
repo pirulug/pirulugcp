@@ -128,9 +128,51 @@ class Database {
     }
 
     try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN cf_turnstile_enabled INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN cf_turnstile_site_key TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN cf_turnstile_secret_key TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE users ADD COLUMN name TEXT DEFAULT 'Administrador'");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE users ADD COLUMN email TEXT DEFAULT 'admin@pirulugcp.local'");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE users ADD COLUMN two_factor_secret TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
       $db->exec("
-        INSERT OR IGNORE INTO server_settings (id, server_hostname, panel_domain, server_timezone, panel_git_branch, panel_git_is_private, panel_auto_update)
-        VALUES (1, 'localhost', '', 'UTC', 'main', 1, 0);
+        INSERT OR IGNORE INTO server_settings (id, server_hostname, panel_domain, server_timezone, panel_git_branch, panel_git_is_private, panel_auto_update, cf_turnstile_enabled, cf_turnstile_site_key, cf_turnstile_secret_key)
+        VALUES (1, 'localhost', '', 'UTC', 'main', 1, 0, 0, '', '');
       ");
     } catch (PDOException $e) {
       // Ya existe
