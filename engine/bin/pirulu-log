@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Gestor y visor de logs del sistema para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+LOG_KEY="$2"
+LINES="${3:-100}"
+
+# Mapa de archivos de logs permitidos
+get_log_path() {
+    local key="$1"
+    case "$key" in
+        "nginx_access") echo "/var/log/nginx/access.log" ;;
+        "nginx_error") echo "/var/log/nginx/error.log" ;;
+        "nginx_panel_access") echo "/var/log/nginx/pirulugcp_access.log" ;;
+        "nginx_panel_error") echo "/var/log/nginx/pirulugcp_error.log" ;;
+        "apache_access") echo "/var/log/apache2/access.log" ;;
+        "apache_error") echo "/var/log/apache2/error.log" ;;
+        "apache_other") echo "/var/log/apache2/other_vhosts_access.log" ;;
+        "php7.4_fpm") echo "/var/log/php7.4-fpm.log" ;;
+        "php8.0_fpm") echo "/var/log/php8.0-fpm.log" ;;
+        "php8.1_fpm") echo "/var/log/php8.1-fpm.log" ;;
+        "php8.2_fpm") echo "/var/log/php8.2-fpm.log" ;;
+        "php8.3_fpm") echo "/var/log/php8.3-fpm.log" ;;
+        "php8.4_fpm") echo "/var/log/php8.4-fpm.log" ;;
+        "php8.5_fpm") echo "/var/log/php8.5-fpm.log" ;;
+        "mariadb_error") echo "/var/log/mysql/error.log" ;;
+        "pirulu_install") echo "/var/log/pirulugcp/pirulugcp_install.log" ;;
+        "pirulu_engine") echo "/var/log/pirulugcp/engine.log" ;;
+        *)
+            # Comprobar si es un log de dominio en /var/log/nginx o /var/log/apache2
+            if [[ "$key" =~ ^domain_(nginx|apache)_(.+)$ ]]; then
+                local type="${BASH_REMATCH[1]}"
+                local dom="${BASH_REMATCH[2]}"
+                if [ "$type" = "nginx" ]; then
+                    echo "/var/log/nginx/${dom}_access.log"
+                else
+                    echo "/var/log/apache2/${dom}_access.log"
+                fi
+            else
+                echo ""
+            fi
+            ;;
+    esac
+}
+
+case "$ACTION" in
+    read)
+        [ -z "$LOG_KEY" ] && exit_error "Clave de log requerida"
+        FILE_PATH=$(get_log_path "$LOG_KEY")
+
+        if [ -z "$FILE_PATH" ] || [ ! -f "$FILE_PATH" ]; then
+            echo "El archivo de log no existe o aun no contiene registros: ${FILE_PATH}"
+            exit 0
+        fi
+
+        tail -n "$LINES" "$FILE_PATH" 2>&1
+        ;;
+
+    clear)
+        [ -z "$LOG_KEY" ] && exit_error "Clave de log requerida"
+        FILE_PATH=$(get_log_path "$LOG_KEY")
+
+        if [ -n "$FILE_PATH" ] && [ -f "$FILE_PATH" ]; then
+            truncate -s 0 "$FILE_PATH"
+            echo "{\"status\":\"success\",\"message\":\"Archivo de log limpiado correctamente\"}"
+        else
+            exit_error "No se pudo limpiar el archivo de log"
+        fi
+        ;;
+
+    list)
+        echo "{\"status\":\"success\"}"
+        ;;
+
+    *)
+        echo "Uso: pirulu-log <read|clear> <clave_log> [lineas]"
+        exit 1
+        ;;
+esac

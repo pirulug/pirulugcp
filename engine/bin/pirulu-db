@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Gestor de MariaDB / MySQL para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/db-helper.sh"
+
+check_root
+
+ACTION="$1"
+
+usage() {
+    echo "Uso: pirulu-db <accion> [argumentos]"
+    echo "Acciones:"
+    echo "  add <db_name> <db_user> <password>    Crear base de datos y usuario con privilegios"
+    echo "  delete <db_name> [db_user]            Eliminar base de datos y usuario opcional"
+    echo "  passwd <db_user> <new_password>       Cambiar clave de usuario MariaDB"
+    echo "  list                                  Listar bases de datos (JSON)"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+case "$ACTION" in
+    add)
+        DB_NAME="$2"
+        DB_USER="$3"
+        PASSWORD="$4"
+
+        [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$PASSWORD" ] && usage
+
+        # Crear base de datos
+        run_sql "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+        # Crear usuario y asignar permisos
+        run_sql "CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
+        run_sql "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';"
+        run_sql "FLUSH PRIVILEGES;"
+
+        log_info "Base de datos $DB_NAME y usuario $DB_USER creados exitosamente."
+        echo "{\"status\":\"success\",\"message\":\"Base de datos $DB_NAME creada exitosamente\",\"database\":\"$DB_NAME\",\"user\":\"$DB_USER\"}"
+        ;;
+
+    delete)
+        DB_NAME="$2"
+        DB_USER="$3"
+
+        [ -z "$DB_NAME" ] && usage
+
+        run_sql "DROP DATABASE IF EXISTS \`${DB_NAME}\`;"
+
+        if [ -n "$DB_USER" ]; then
+            run_sql "DROP USER IF EXISTS '${DB_USER}'@'localhost';"
+        fi
+
+        run_sql "FLUSH PRIVILEGES;"
+
+        log_info "Base de datos $DB_NAME eliminada."
+        echo "{\"status\":\"success\",\"message\":\"Base de datos $DB_NAME eliminada exitosamente\"}"
+        ;;
+
+    passwd)
+        DB_USER="$2"
+        NEW_PASSWORD="$3"
+
+        [ -z "$DB_USER" ] || [ -z "$NEW_PASSWORD" ] && usage
+
+        run_sql "ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${NEW_PASSWORD}';"
+        run_sql "FLUSH PRIVILEGES;"
+
+        log_info "Clave de usuario $DB_USER actualizada."
+        echo "{\"status\":\"success\",\"message\":\"Clave actualizada para $DB_USER\"}"
+        ;;
+
+    list)
+        # Listar bases de datos que no sean del sistema
+        DBS=$(run_sql "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys');" | tail -n +2)
+        JSON_LIST="["
+        FIRST=1
+        while IFS= read -r db; do
+            [ -z "$db" ] && continue
+            if [ $FIRST -eq 0 ]; then
+                JSON_LIST="${JSON_LIST},"
+            fi
+            JSON_LIST="${JSON_LIST}{\"database\":\"${db}\"}"
+            FIRST=0
+        done <<< "$DBS"
+        JSON_LIST="${JSON_LIST}]"
+        echo "{\"status\":\"success\",\"databases\":${JSON_LIST}}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

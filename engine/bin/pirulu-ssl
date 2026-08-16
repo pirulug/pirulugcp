@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Gestor de Certificados SSL Gratuitos (Let's Encrypt / Certbot) para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+DOMAIN="$3"
+EMAIL="$4"
+
+usage() {
+    echo "Uso: pirulu-ssl <issue|renew|delete|status> [usuario] [dominio] [email]"
+    echo "Acciones:"
+    echo "  issue <usuario> <dominio> [email]   Expedir e instalar certificado Let's Encrypt"
+    echo "  renew                               Renovar todos los certificados vencidos"
+    echo "  delete <usuario> <dominio>          Eliminar certificado SSL y volver a HTTP"
+    echo "  status <dominio>                    Comprobar estado del certificado"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+case "$ACTION" in
+    issue)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        validate_username "$USER"
+        validate_domain "$DOMAIN"
+
+        DOC_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/public_html"
+        if [ ! -d "$DOC_ROOT" ]; then
+            exit_error "El DocumentRoot no existe: $DOC_ROOT"
+        fi
+
+        log_info "Iniciando expedicion de certificado SSL gratuito para: $DOMAIN"
+
+        # Preparar directorio de desafio ACME
+        mkdir -p "${DOC_ROOT}/.well-known/acme-challenge"
+        chown -R "${USER}:${USER}" "${DOC_ROOT}/.well-known"
+        chmod -R 755 "${DOC_ROOT}/.well-known"
+
+        # Opciones de correo
+        EMAIL_OPT="--register-unsafely-without-email"
+        if [ -n "$EMAIL" ]; then
+            EMAIL_OPT="--email $EMAIL --no-eff-email"
+        fi
+
+        # Ejecutar Certbot con plugin webroot
+        certbot certonly --webroot \
+            -w "$DOC_ROOT" \
+            -d "$DOMAIN" \
+            -d "www.${DOMAIN}" \
+            --non-interactive \
+            --agree-tos \
+            $EMAIL_OPT >/dev/null 2>&1
+
+        # Si el certificado para www falla por no tener registro DNS, reintentar solo con dominio raiz
+        if [ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+            certbot certonly --webroot \
+                -w "$DOC_ROOT" \
+                -d "$DOMAIN" \
+                --non-interactive \
+                --agree-tos \
+                $EMAIL_OPT >/dev/null 2>&1
+        fi
+
+        if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+            # Activar configuracion SSL en el servidor web
+            "${SCRIPT_DIR}/pirulu-web" ssl-enable "$USER" "$DOMAIN"
+            log_info "Certificado SSL Let's Encrypt activado para: $DOMAIN"
+            echo "{\"status\":\"success\",\"message\":\"Certificado SSL Let's Encrypt instalado y activado correctamente\",\"domain\":\"$DOMAIN\"}"
+        else
+            exit_error "No se pudo obtener el certificado de Let's Encrypt. Verifica que los registros DNS apunten a este servidor."
+        fi
+        ;;
+
+    renew)
+        log_info "Ejecutando renovacion de certificados SSL..."
+        certbot renew --quiet
+        systemctl reload nginx >/dev/null 2>&1 || true
+        systemctl reload apache2 >/dev/null 2>&1 || true
+        echo "{\"status\":\"success\",\"message\":\"Certificados renovados exitosamente\"}"
+        ;;
+
+    delete)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Eliminando certificado SSL para: $DOMAIN"
+
+        certbot delete --cert-name "$DOMAIN" --non-interactive >/dev/null 2>&1 || true
+        "${SCRIPT_DIR}/pirulu-web" ssl-disable "$USER" "$DOMAIN"
+        echo "{\"status\":\"success\",\"message\":\"Certificado SSL removido para $DOMAIN\"}"
+        ;;
+
+    status)
+        [ -z "$DOMAIN" ] && usage
+        CERT_FILE="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+        if [ -f "$CERT_FILE" ]; then
+            EXP_DATE=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
+            echo "{\"status\":\"success\",\"ssl_active\":true,\"expires\":\"$EXP_DATE\"}"
+        else
+            echo "{\"status\":\"success\",\"ssl_active\":false,\"expires\":null}"
+        fi
+        ;;
+
+    *)
+        usage
+        ;;
+esac

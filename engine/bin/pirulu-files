@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Gestor seguro de archivos para dominios en PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+TARGET_PATH="$2"
+PARAM1="$3"
+PARAM2="$4"
+
+# Validacion de seguridad: el objetivo debe residir en /home o /var/www
+validate_safe_path() {
+    local path="$1"
+    if [ -z "$path" ]; then
+        exit_error "Ruta de archivo o directorio requerida"
+    fi
+
+    local real
+    real=$(realpath -m "$path" 2>/dev/null)
+    if [[ ! "$real" =~ ^/home/ ]] && [[ ! "$real" =~ ^/var/www/ ]]; then
+        exit_error "Acceso denegado fuera de directorios de usuario"
+    fi
+}
+
+case "$ACTION" in
+    list)
+        validate_safe_path "$TARGET_PATH"
+        if [ ! -d "$TARGET_PATH" ]; then
+            exit_error "El directorio no existe: $TARGET_PATH"
+        fi
+
+        echo "{\"status\":\"success\",\"path\":\"$TARGET_PATH\"}"
+        ;;
+
+    mkdir)
+        validate_safe_path "$TARGET_PATH"
+        OWNER_USER="$PARAM1"
+        mkdir -p "$TARGET_PATH"
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown -R "${OWNER_USER}:${OWNER_USER}" "$TARGET_PATH"
+        fi
+        chmod 755 "$TARGET_PATH"
+        echo "{\"status\":\"success\",\"message\":\"Carpeta creada correctamente\"}"
+        ;;
+
+    touch)
+        validate_safe_path "$TARGET_PATH"
+        OWNER_USER="$PARAM1"
+        touch "$TARGET_PATH"
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown "${OWNER_USER}:${OWNER_USER}" "$TARGET_PATH"
+        fi
+        chmod 644 "$TARGET_PATH"
+        echo "{\"status\":\"success\",\"message\":\"Archivo creado correctamente\"}"
+        ;;
+
+    delete)
+        validate_safe_path "$TARGET_PATH"
+        if [ -e "$TARGET_PATH" ]; then
+            rm -rf "$TARGET_PATH"
+            echo "{\"status\":\"success\",\"message\":\"Elemento eliminado correctamente\"}"
+        else
+            exit_error "El archivo o carpeta no existe"
+        fi
+        ;;
+
+    chmod)
+        validate_safe_path "$TARGET_PATH"
+        MODE="$PARAM1"
+        if [[ "$MODE" =~ ^[0-7]{3,4}$ ]]; then
+            chmod "$MODE" "$TARGET_PATH"
+            echo "{\"status\":\"success\",\"message\":\"Permisos cambiados a $MODE\"}"
+        else
+            exit_error "Modo de permisos invalido: $MODE"
+        fi
+        ;;
+
+    chown)
+        validate_safe_path "$TARGET_PATH"
+        OWNER_USER="$PARAM1"
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown -R "${OWNER_USER}:${OWNER_USER}" "$TARGET_PATH"
+            echo "{\"status\":\"success\",\"message\":\"Propietario actualizado\"}"
+        else
+            exit_error "Usuario invalido"
+        fi
+        ;;
+
+    unzip)
+        validate_safe_path "$TARGET_PATH"
+        DEST_DIR="$PARAM1"
+        OWNER_USER="$PARAM2"
+        validate_safe_path "$DEST_DIR"
+
+        if [ ! -f "$TARGET_PATH" ]; then
+            exit_error "Archivo ZIP no encontrado"
+        fi
+
+        mkdir -p "$DEST_DIR"
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -o "$TARGET_PATH" -d "$DEST_DIR" >/dev/null 2>&1
+        else
+            python3 -c "import zipfile; zipfile.ZipFile('$TARGET_PATH').extractall('$DEST_DIR')"
+        fi
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown -R "${OWNER_USER}:${OWNER_USER}" "$DEST_DIR"
+        fi
+
+        echo "{\"status\":\"success\",\"message\":\"Archivo ZIP extraido correctamente\"}"
+        ;;
+
+    *)
+        echo "Uso: pirulu-files <list|mkdir|touch|delete|chmod|chown|unzip> <ruta> [param1] [param2]"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Gestor de PHP-FPM Multi-Version para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+
+usage() {
+    echo "Uso: pirulu-php <accion> [argumentos]"
+    echo "Acciones:"
+    echo "  versions                                                  Listar versiones de PHP instaladas (JSON)"
+    echo "  pool-add <user> <domain> <version> <doc_root> <socket>    Crear pool de PHP-FPM"
+    echo "  pool-del <user> <domain> [version]                        Eliminar pool de PHP-FPM"
+    echo "  restart <version>                                         Reiniciar servicio PHP-FPM"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+TPL_FILE="${PIRULU_ROOT}/engine/templates/php-fpm/pool.conf.tpl"
+
+case "$ACTION" in
+    versions)
+        IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
+        JSON_LIST="["
+        FIRST=1
+        for ver in "${VERSIONS[@]}"; do
+            INSTALLED="false"
+            STATUS="inactive"
+            if command -v "php${ver}" >/dev/null 2>&1 || [ -d "/etc/php/${ver}" ]; then
+                INSTALLED="true"
+                if systemctl is-active --quiet "php${ver}-fpm"; then
+                    STATUS="active"
+                fi
+            fi
+            if [ $FIRST -eq 0 ]; then
+                JSON_LIST="${JSON_LIST},"
+            fi
+            JSON_LIST="${JSON_LIST}{\"version\":\"${ver}\",\"installed\":${INSTALLED},\"status\":\"${STATUS}\"}"
+            FIRST=0
+        done
+        JSON_LIST="${JSON_LIST}]"
+        echo "{\"status\":\"success\",\"versions\":${JSON_LIST}}"
+        ;;
+
+    pool-add)
+        USER="$2"
+        DOMAIN="$3"
+        VERSION="$4"
+        DOC_ROOT="$5"
+        SOCKET="$6"
+
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$VERSION" ] || [ -z "$DOC_ROOT" ] || [ -z "$SOCKET" ] && usage
+
+        POOL_NAME="${USER}_${DOMAIN}"
+        POOL_DIR="/etc/php/${VERSION}/fpm/pool.d"
+        POOL_FILE="${POOL_DIR}/${POOL_NAME}.conf"
+
+        mkdir -p "$POOL_DIR"
+
+        sed -e "s|%POOL_NAME%|${POOL_NAME}|g" \
+            -e "s|%USER%|${USER}|g" \
+            -e "s|%DOC_ROOT%|${DOC_ROOT}|g" \
+            -e "s|%FPM_SOCKET%|${SOCKET}|g" \
+            "$TPL_FILE" > "$POOL_FILE"
+
+        systemctl restart "php${VERSION}-fpm" >/dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" >/dev/null 2>&1
+        log_info "Pool PHP-FPM $POOL_NAME creado para PHP $VERSION"
+        echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM creado para PHP $VERSION\"}"
+        ;;
+
+    pool-del)
+        USER="$2"
+        DOMAIN="$3"
+        VERSION="$4"
+
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        POOL_NAME="${USER}_${DOMAIN}"
+
+        if [ -n "$VERSION" ]; then
+            POOL_FILE="/etc/php/${VERSION}/fpm/pool.d/${POOL_NAME}.conf"
+            if [ -f "$POOL_FILE" ]; then
+                rm -f "$POOL_FILE"
+                systemctl restart "php${VERSION}-fpm" >/dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" >/dev/null 2>&1
+            fi
+        else
+            IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
+            for ver in "${VERSIONS[@]}"; do
+                POOL_FILE="/etc/php/${ver}/fpm/pool.d/${POOL_NAME}.conf"
+                if [ -f "$POOL_FILE" ]; then
+                    rm -f "$POOL_FILE"
+                    systemctl restart "php${ver}-fpm" >/dev/null 2>&1 || systemctl reload "php${ver}-fpm" >/dev/null 2>&1
+                fi
+            done
+        fi
+
+        log_info "Pool PHP-FPM $POOL_NAME eliminado"
+        echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM eliminado\"}"
+        ;;
+
+    restart)
+        VERSION="$2"
+        [ -z "$VERSION" ] && usage
+        systemctl restart "php${VERSION}-fpm"
+        echo "{\"status\":\"success\",\"message\":\"PHP-FPM $VERSION reiniciado\"}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

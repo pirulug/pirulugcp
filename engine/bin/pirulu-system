@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Gestor de estado del sistema y servicios para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+ACTION="$1"
+SERVICE="$2"
+
+usage() {
+    echo "Uso: pirulu-system <status|metrics|service-action> [servicio] [start|stop|restart|reload]"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+get_service_status() {
+    local svc="$1"
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+        echo "active"
+    elif systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+        echo "inactive"
+    else
+        echo "not-found"
+    fi
+}
+
+case "$ACTION" in
+    status)
+        NGINX_STATUS=$(get_service_status "nginx")
+        APACHE_STATUS=$(get_service_status "apache2")
+        MARIADB_STATUS=$(get_service_status "mariadb")
+        [ "$MARIADB_STATUS" = "not-found" ] && MARIADB_STATUS=$(get_service_status "mysql")
+
+        IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
+        PHP_JSON="["
+        FIRST=1
+        for ver in "${VERSIONS[@]}"; do
+            STATUS=$(get_service_status "php${ver}-fpm")
+            if [ $FIRST -eq 0 ]; then
+                PHP_JSON="${PHP_JSON},"
+            fi
+            PHP_JSON="${PHP_JSON}{\"service\":\"php${ver}-fpm\",\"version\":\"${ver}\",\"status\":\"${STATUS}\"}"
+            FIRST=0
+        done
+        PHP_JSON="${PHP_JSON}]"
+
+        echo "{\"status\":\"success\",\"services\":{\"nginx\":\"${NGINX_STATUS}\",\"apache\":\"${APACHE_STATUS}\",\"mariadb\":\"${MARIADB_STATUS}\",\"php_fpm\":${PHP_JSON}}}"
+        ;;
+
+    metrics)
+        # Memoria RAM
+        MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')
+        MEM_USED=$(free -m | awk '/^Mem:/{print $3}')
+        MEM_FREE=$(free -m | awk '/^Mem:/{print $4}')
+
+        # Espacio en Disco (raiz /)
+        DISK_TOTAL=$(df -h / | awk 'NR==2{print $2}')
+        DISK_USED=$(df -h / | awk 'NR==2{print $3}')
+        DISK_FREE=$(df -h / | awk 'NR==2{print $4}')
+        DISK_PERCENT=$(df -h / | awk 'NR==2{print $5}')
+
+        # Carga CPU (Load average)
+        LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}' | sed 's/^[ \t]*//')
+
+        # Hostname y Uptime
+        SYS_HOSTNAME=$(hostname)
+        SYS_UPTIME=$(uptime -p 2>/dev/null || uptime)
+
+        echo "{\"status\":\"success\",\"metrics\":{\"hostname\":\"${SYS_HOSTNAME}\",\"uptime\":\"${SYS_UPTIME}\",\"load\":\"${LOAD_AVG}\",\"memory\":{\"total_mb\":${MEM_TOTAL:-0},\"used_mb\":${MEM_USED:-0},\"free_mb\":${MEM_FREE:-0}},\"disk\":{\"total\":\"${DISK_TOTAL}\",\"used\":\"${DISK_USED}\",\"free\":\"${DISK_FREE}\",\"percent\":\"${DISK_PERCENT}\"}}}"
+        ;;
+
+    service-action)
+        check_root
+        SVC_NAME="$2"
+        SVC_CMD="$3"
+        [ -z "$SVC_NAME" ] || [ -z "$SVC_CMD" ] && usage
+
+        case "$SVC_CMD" in
+            start|stop|restart|reload)
+                systemctl "$SVC_CMD" "$SVC_NAME"
+                echo "{\"status\":\"success\",\"message\":\"Accion $SVC_CMD ejecutada en $SVC_NAME\"}"
+                ;;
+            *)
+                exit_error "Accion no valida: $SVC_CMD"
+                ;;
+        esac
+        ;;
+
+    *)
+        usage
+        ;;
+esac

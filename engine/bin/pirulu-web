@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+# Gestor de sitios web para PiruluGCP (Nginx Reverse Proxy + Apache Backend)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+DOMAIN="$3"
+PHP_VERSION="${4:-$DEFAULT_PHP_VERSION}"
+DOC_SUFFIX="${5:-public_html}"
+
+usage() {
+    echo "Uso: pirulu-web <accion> [argumentos]"
+    echo "Acciones:"
+    echo "  add <usuario> <dominio> [php_ver] [doc_suffix]    Crear sitio web (Nginx Proxy + Apache)"
+    echo "  delete <usuario> <dominio>                        Eliminar sitio web"
+    echo "  set-php <usuario> <dominio> <php_ver>             Cambiar version de PHP del dominio"
+    echo "  set-docroot <usuario> <dominio> <doc_suffix>      Cambiar carpeta raiz (ej. public_html/public para Laravel)"
+    echo "  ssl-enable <usuario> <dominio>                    Activar SSL en Nginx Proxy"
+    echo "  ssl-disable <usuario> <dominio>                   Desactivar SSL en Nginx Proxy"
+    echo "  rebuild <usuario> <dominio>                       Regenerar configuraciones"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+# Normalizar sufijo de DocumentRoot (ej: public_html o public_html/public)
+DOC_SUFFIX="${DOC_SUFFIX#/}"
+[ -z "$DOC_SUFFIX" ] && DOC_SUFFIX="public_html"
+
+DOC_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${DOC_SUFFIX}"
+FPM_SOCKET="/run/php/php${PHP_VERSION}-fpm-${USER}-${DOMAIN}.sock"
+
+reload_servers() {
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && (systemctl reload nginx || systemctl restart nginx)
+    fi
+    if command -v apache2 >/dev/null 2>&1; then
+        apache2ctl configtest >/dev/null 2>&1 && (systemctl reload apache2 || systemctl restart apache2)
+    fi
+}
+
+create_default_index() {
+    local target_dir="$1"
+    local domain_name="$2"
+    local user_name="$3"
+
+    mkdir -p "$target_dir"
+    cat <<'EOF' > "${target_dir}/index.php"
+<?php
+$domain = "%DOMAIN%";
+$php_version = phpversion();
+$doc_root = __DIR__;
+$server_software = $_SERVER["SERVER_SOFTWARE"] ?? "Nginx + Apache/2.4";
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bienvenido a <?= htmlspecialchars($domain) ?></title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 32px; max-width: 600px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h1 { margin-top: 0; color: #38bdf8; font-size: 28px; }
+        .badge { display: inline-block; background: #0284c7; color: #ffffff; padding: 4px 12px; border-radius: 6px; font-weight: 600; font-size: 14px; }
+        .info-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .info-table td { padding: 10px 0; border-bottom: 1px solid #334155; }
+        .info-table td:first-child { color: #94a3b8; font-weight: 500; }
+        .info-table td:last-child { text-align: right; font-family: monospace; }
+        .footer { margin-top: 24px; text-align: center; color: #64748b; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h1><?= htmlspecialchars($domain) ?></h1>
+            <span class="badge">PHP <?= htmlspecialchars($php_version) ?></span>
+        </div>
+        <p style="color: #cbd5e1; margin-bottom: 20px;">Sitio web activo y funcionando en <strong>PiruluGCP</strong>.</p>
+        <table class="info-table">
+            <tr>
+                <td>Version de PHP:</td>
+                <td><strong>PHP <?= htmlspecialchars($php_version) ?></strong></td>
+            </tr>
+            <tr>
+                <td>Arquitectura Web:</td>
+                <td>Nginx (Proxy Reverso) + Apache 2</td>
+            </tr>
+            <tr>
+                <td>Manejador FastCGI:</td>
+                <td>PHP-FPM Socket</td>
+            </tr>
+            <tr>
+                <td>Carpeta Raiz:</td>
+                <td><?= htmlspecialchars($doc_root) ?></td>
+            </tr>
+            <tr>
+                <td>Servidor:</td>
+                <td><?= htmlspecialchars($server_software) ?></td>
+            </tr>
+        </table>
+        <div class="footer">
+            PiruluGCP Control Panel &bull; <?= date("Y") ?>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+    sed -i "s|%DOMAIN%|${domain_name}|g" "${target_dir}/index.php"
+    chown "${user_name}:${user_name}" "${target_dir}/index.php"
+    chmod 644 "${target_dir}/index.php"
+    rm -f "${target_dir}/index.html"
+}
+
+case "$ACTION" in
+    add)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        validate_username "$USER"
+        validate_domain "$DOMAIN"
+
+        log_info "Creando sitio: $DOMAIN (Usuario: $USER, PHP: $PHP_VERSION, Root: $DOC_SUFFIX)"
+
+        # Asegurar que el usuario del sistema exista
+        if ! id "$USER" >/dev/null 2>&1; then
+            "${SCRIPT_DIR}/pirulu-user" add "$USER" "$(openssl rand -base64 12 2>/dev/null || echo 'Pass1234!')" >/dev/null 2>&1 || true
+        fi
+
+        # Crear estructura de directorios
+        mkdir -p "$DOC_ROOT"
+        mkdir -p "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/.well-known/acme-challenge"
+        chown -R "${USER}:${USER}" "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
+        chmod 755 "${DEFAULT_USER_HOME}/${USER}"
+        chmod 755 "${DEFAULT_USER_HOME}/${USER}/web"
+        chmod 755 "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
+        chmod 755 "$DOC_ROOT"
+
+        # Crear index.php por defecto con la version de PHP
+        if [ ! -f "${DOC_ROOT}/index.php" ]; then
+            create_default_index "$DOC_ROOT" "$DOMAIN" "$USER"
+        fi
+
+        # 1. Crear Pool de PHP-FPM
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$PHP_VERSION" "$DOC_ROOT" "$FPM_SOCKET"
+
+        # 2. Configurar Backend Apache (puerto 8080)
+        if [ -d "/etc/apache2" ]; then
+            APACHE_CONF="${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_APACHE="${PIRULU_ROOT}/engine/templates/apache/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${DOC_ROOT}|g" \
+                -e "s|%FPM_SOCKET%|${FPM_SOCKET}|g" \
+                "$TPL_APACHE" > "$APACHE_CONF"
+
+            a2ensite "${DOMAIN}.conf" >/dev/null 2>&1 || true
+        fi
+
+        # 3. Configurar Frontend Nginx Proxy Reverso (puerto 80)
+        if [ -d "/etc/nginx" ]; then
+            NGINX_CONF="${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${DOC_ROOT}|g" \
+                "$TPL_NGINX" > "$NGINX_CONF"
+
+            ln -sf "$NGINX_CONF" "${NGINX_SITES_ENABLED}/${DOMAIN}.conf"
+        fi
+
+        reload_servers
+
+        log_info "Sitio $DOMAIN creado y habilitado en Nginx + Apache."
+        echo "{\"status\":\"success\",\"message\":\"Sitio web $DOMAIN creado correctamente\",\"domain\":\"$DOMAIN\",\"user\":\"$USER\",\"php_version\":\"$PHP_VERSION\",\"doc_root\":\"$DOC_ROOT\"}"
+        ;;
+
+    set-docroot)
+        NEW_DOC_SUFFIX="$4"
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$NEW_DOC_SUFFIX" ] && usage
+        NEW_DOC_SUFFIX="${NEW_DOC_SUFFIX#/}"
+        NEW_DOC_ROOT="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}/${NEW_DOC_SUFFIX}"
+
+        log_info "Actualizando DocumentRoot para $DOMAIN a $NEW_DOC_ROOT"
+
+        mkdir -p "$NEW_DOC_ROOT"
+        chown -R "${USER}:${USER}" "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
+        chmod 755 "$NEW_DOC_ROOT"
+
+        # Detectar el socket FPM activo del dominio
+        DETECTED_SOCKET=""
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            DETECTED_SOCKET=$(grep -oE '/run/php/php[0-9.]+-fpm-[^.]+\.[^"|]+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | head -n 1)
+        fi
+        if [ -n "$DETECTED_SOCKET" ]; then
+            CURRENT_FPM_SOCKET="$DETECTED_SOCKET"
+        else
+            CURRENT_FPM_SOCKET="/run/php/php${DEFAULT_PHP_VERSION}-fpm-${USER}-${DOMAIN}.sock"
+        fi
+
+        # Crear index.php en el nuevo docroot si esta vacio
+        if [ ! -f "${NEW_DOC_ROOT}/index.php" ] && [ ! -f "${NEW_DOC_ROOT}/index.html" ]; then
+            create_default_index "$NEW_DOC_ROOT" "$DOMAIN" "$USER"
+        fi
+
+        # Actualizar Apache
+        if [ -d "/etc/apache2" ]; then
+            APACHE_CONF="${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_APACHE="${PIRULU_ROOT}/engine/templates/apache/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${NEW_DOC_ROOT}|g" \
+                -e "s|%FPM_SOCKET%|${CURRENT_FPM_SOCKET}|g" \
+                "$TPL_APACHE" > "$APACHE_CONF"
+        fi
+
+        # Actualizar Nginx
+        if [ -d "/etc/nginx" ]; then
+            SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+            SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+            NGINX_CONF="${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+
+            if [ -f "$SSL_CERT" ]; then
+                TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost-ssl.conf.tpl"
+                sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                    -e "s|%ALIASES%||g" \
+                    -e "s|%DOC_ROOT%|${NEW_DOC_ROOT}|g" \
+                    -e "s|%SSL_CERT%|${SSL_CERT}|g" \
+                    -e "s|%SSL_KEY%|${SSL_KEY}|g" \
+                    "$TPL_NGINX" > "$NGINX_CONF"
+            else
+                TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost.conf.tpl"
+                sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                    -e "s|%ALIASES%||g" \
+                    -e "s|%DOC_ROOT%|${NEW_DOC_ROOT}|g" \
+                    "$TPL_NGINX" > "$NGINX_CONF"
+            fi
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"Carpeta raiz actualizada a $NEW_DOC_ROOT para $DOMAIN\"}"
+        ;;
+
+    set-php)
+        NEW_PHP="$4"
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$NEW_PHP" ] && usage
+
+        # Detectar el docroot actual del dominio
+        DETECTED_DOCROOT=""
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            DETECTED_DOCROOT=$(grep -E '^\s*DocumentRoot\s+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | awk '{print $2}' | head -n 1)
+        fi
+        if [ -n "$DETECTED_DOCROOT" ]; then
+            ACTIVE_DOC_ROOT="$DETECTED_DOCROOT"
+        else
+            ACTIVE_DOC_ROOT="$DOC_ROOT"
+        fi
+
+        log_info "Cambiando PHP para $DOMAIN a $NEW_PHP (Root: $ACTIVE_DOC_ROOT)"
+        NEW_SOCKET="/run/php/php${NEW_PHP}-fpm-${USER}-${DOMAIN}.sock"
+        "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN"
+        "${SCRIPT_DIR}/pirulu-php" pool-add "$USER" "$DOMAIN" "$NEW_PHP" "$ACTIVE_DOC_ROOT" "$NEW_SOCKET"
+
+        if [ -d "/etc/apache2" ]; then
+            APACHE_CONF="${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_APACHE="${PIRULU_ROOT}/engine/templates/apache/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                -e "s|%FPM_SOCKET%|${NEW_SOCKET}|g" \
+                "$TPL_APACHE" > "$APACHE_CONF"
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"PHP actualizado a $NEW_PHP para $DOMAIN\"}"
+        ;;
+
+    ssl-enable)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Habilitando SSL en Nginx Proxy para $DOMAIN"
+
+        SSL_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+        SSL_KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+
+        # Detectar docroot
+        DETECTED_DOCROOT=""
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            DETECTED_DOCROOT=$(grep -E '^\s*DocumentRoot\s+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | awk '{print $2}' | head -n 1)
+        fi
+        ACTIVE_DOC_ROOT="${DETECTED_DOCROOT:-$DOC_ROOT}"
+
+        if [ -d "/etc/nginx" ]; then
+            NGINX_CONF="${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_NGINX_SSL="${PIRULU_ROOT}/engine/templates/nginx/vhost-ssl.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                -e "s|%SSL_CERT%|${SSL_CERT}|g" \
+                -e "s|%SSL_KEY%|${SSL_KEY}|g" \
+                "$TPL_NGINX_SSL" > "$NGINX_CONF"
+
+            ln -sf "$NGINX_CONF" "${NGINX_SITES_ENABLED}/${DOMAIN}.conf"
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"SSL habilitado en Nginx Proxy para $DOMAIN\"}"
+        ;;
+
+    ssl-disable)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Deshabilitando SSL para $DOMAIN"
+
+        DETECTED_DOCROOT=""
+        if [ -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" ]; then
+            DETECTED_DOCROOT=$(grep -E '^\s*DocumentRoot\s+' "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf" | awk '{print $2}' | head -n 1)
+        fi
+        ACTIVE_DOC_ROOT="${DETECTED_DOCROOT:-$DOC_ROOT}"
+
+        if [ -d "/etc/nginx" ]; then
+            NGINX_CONF="${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+            TPL_NGINX="${PIRULU_ROOT}/engine/templates/nginx/vhost.conf.tpl"
+
+            sed -e "s|%DOMAIN%|${DOMAIN}|g" \
+                -e "s|%ALIASES%||g" \
+                -e "s|%DOC_ROOT%|${ACTIVE_DOC_ROOT}|g" \
+                "$TPL_NGINX" > "$NGINX_CONF"
+        fi
+
+        reload_servers
+        echo "{\"status\":\"success\",\"message\":\"SSL deshabilitado para $DOMAIN\"}"
+        ;;
+
+    delete)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        log_info "Eliminando sitio web: $DOMAIN"
+
+        rm -f "${NGINX_SITES_AVAILABLE}/${DOMAIN}.conf"
+        rm -f "${NGINX_SITES_ENABLED}/${DOMAIN}.conf"
+
+        if command -v a2dissite >/dev/null 2>&1; then
+            a2dissite "${DOMAIN}.conf" >/dev/null 2>&1 || true
+        fi
+        rm -f "${APACHE_SITES_AVAILABLE}/${DOMAIN}.conf"
+
+        reload_servers
+
+        "${SCRIPT_DIR}/pirulu-php" pool-del "$USER" "$DOMAIN" "$PHP_VERSION"
+        rm -rf "${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
+
+        log_info "Sitio $DOMAIN eliminado."
+        echo "{\"status\":\"success\",\"message\":\"Sitio web $DOMAIN eliminado correctamente\"}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

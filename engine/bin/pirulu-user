@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Gestor de usuarios del sistema y cuentas de hosting para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+PASSWORD="$3"
+
+usage() {
+    echo "Uso: pirulu-user <add|delete|passwd|list> [usuario] [clave]"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+case "$ACTION" in
+    add)
+        [ -z "$USER" ] || [ -z "$PASSWORD" ] && usage
+        validate_username "$USER"
+
+        if id "$USER" >/dev/null 2>&1; then
+            exit_error "El usuario $USER ya existe en el sistema."
+        fi
+
+        # Crear usuario con home y shell seguro
+        useradd -m -s /bin/bash -d "${DEFAULT_USER_HOME}/${USER}" "$USER"
+        echo "${USER}:${PASSWORD}" | chpasswd
+        chmod 755 "${DEFAULT_USER_HOME}/${USER}"
+
+        # Crear subdirectorios estandar
+        mkdir -p "${DEFAULT_USER_HOME}/${USER}/web"
+        mkdir -p "${DEFAULT_USER_HOME}/${USER}/logs"
+        mkdir -p "${DEFAULT_USER_HOME}/${USER}/tmp"
+        chown -R "${USER}:${USER}" "${DEFAULT_USER_HOME}/${USER}"
+
+        log_info "Usuario de hosting $USER creado con exito."
+        echo "{\"status\":\"success\",\"message\":\"Usuario $USER creado exitosamente\"}"
+        ;;
+
+    delete)
+        [ -z "$USER" ] && usage
+        if ! id "$USER" >/dev/null 2>&1; then
+            exit_error "El usuario $USER no existe."
+        fi
+
+        # Eliminar procesos del usuario y su home
+        pkill -u "$USER" >/dev/null 2>&1
+        userdel -r "$USER" >/dev/null 2>&1
+
+        log_info "Usuario $USER eliminado del sistema."
+        echo "{\"status\":\"success\",\"message\":\"Usuario $USER eliminado\"}"
+        ;;
+
+    passwd)
+        [ -z "$USER" ] || [ -z "$PASSWORD" ] && usage
+        echo "${USER}:${PASSWORD}" | chpasswd
+        log_info "Clave de usuario $USER actualizada."
+        echo "{\"status\":\"success\",\"message\":\"Clave actualizada para $USER\"}"
+        ;;
+
+    list)
+        # Listar usuarios de hosting que tengan directorio en /home
+        USERS=$(find "${DEFAULT_USER_HOME}" -maxdepth 1 -mindepth 1 -type d -printf "%f\n")
+        JSON_LIST="["
+        FIRST=1
+        for u in $USERS; do
+            if id "$u" >/dev/null 2>&1; then
+                if [ $FIRST -eq 0 ]; then
+                    JSON_LIST="${JSON_LIST},"
+                fi
+                JSON_LIST="${JSON_LIST}{\"username\":\"${u}\",\"home\":\"${DEFAULT_USER_HOME}/${u}\"}"
+                FIRST=0
+            fi
+        done
+        JSON_LIST="${JSON_LIST}]"
+        echo "{\"status\":\"success\",\"users\":${JSON_LIST}}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac
