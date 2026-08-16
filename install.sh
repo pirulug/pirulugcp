@@ -25,12 +25,12 @@ done
 # Ejecutar pasos en orden
 check_system_requirements
 setup_php_repositories
-install_webservers
-install_php_multiversion
-install_phpmyadmin
+setup_webserver
+setup_php_multiversion
+setup_phpmyadmin
 deploy_pirulugcp_core
 setup_nginx_vhost
-setup_firewall_rules
+install_firewall
 install_mail_stack
 
 echo "============================================================"
