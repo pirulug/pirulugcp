@@ -36,8 +36,9 @@
         <select class="form-select" id="php_version" name="php_version" required>
           <option value="">-- Seleccionar --</option>
           <?php foreach ($phpVersions as $php): ?>
-            <option value="<?= $php["version"] ?>" <?= ($php["version"] === "8.2") ? "selected" : "" ?>>
-              PHP <?= $php["version"] ?> <?= ($php["status"] === "active") ? "(Activo)" : "" ?>
+            <?php $isInst = !empty($php["installed"]); ?>
+            <option value="<?= $php["version"] ?>" <?= ($php["version"] === "8.5") ? "selected" : "" ?> <?= !$isInst ? "disabled" : "" ?>>
+              PHP <?= $php["version"] ?> <?= $isInst ? ($php["status"] === "active" ? "(Activo)" : "") : "(No instalado)" ?>
             </option>
           <?php endforeach; ?>
         </select>

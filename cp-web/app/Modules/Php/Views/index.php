@@ -4,7 +4,7 @@ $list = $phpVersions ?? $versions ?? [];
 <div class="bg-body p-3 rounded mb-3 d-flex justify-content-between align-items-center">
   <div>
     <h1 class="h4 mb-0">Versiones PHP-FPM Multi-Version</h1>
-    <span class="text-muted small">Gestiona y configura los parametros de ejecucion (php.ini) y servicios PHP-FPM del servidor.</span>
+    <span class="text-muted small">Gestiona, instala bajo demanda y configura los parametros de ejecucion (php.ini) y servicios PHP-FPM del servidor.</span>
   </div>
   <div>
     <a href="/php" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap">
@@ -45,6 +45,9 @@ $list = $phpVersions ?? $versions ?? [];
                 <span class="d-inline-flex align-items-center">
                   <i class="bi bi-filetype-php me-2 text-primary fs-5"></i>
                   PHP <?= $php["version"] ?>
+                  <?php if ($php["version"] === "8.5"): ?>
+                    <span class="badge bg-info-subtle text-info border border-info-subtle ms-2">Base</span>
+                  <?php endif; ?>
                 </span>
               </td>
               <td><code><?= $php["service"] ?? ("php" . $php["version"] . "-fpm") ?></code></td>
@@ -68,18 +71,31 @@ $list = $phpVersions ?? $versions ?? [];
                   <?= $domainCount ?> <?= ($domainCount == 1) ? "dominio" : "dominios" ?>
                 </span>
               </td>
-              <td class="font-monospace small text-muted">/run/php/php<?= $php["version"] ?>-fpm.sock</td>
+              <td class="font-monospace small text-muted">
+                <?php if ($isInstalled): ?>
+                  /run/php/php<?= $php["version"] ?>-fpm.sock
+                <?php else: ?>
+                  <span class="text-muted fst-italic">No disponible</span>
+                <?php endif; ?>
+              </td>
               <td class="text-end pe-3 text-nowrap">
                 <div class="d-flex justify-content-end gap-1">
                   <?php if ($isInstalled): ?>
                     <a href="/php/config/<?= $php["version"] ?>" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" title="Configurar php.ini">
                       <i class="bi bi-sliders me-1"></i> Configurar
                     </a>
-                    <a href="/php/restart/<?= $php["version"] ?>" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" onclick="return confirm('Reiniciar PHP <?= $php["version"] ?>-FPM?')" title="Reiniciar Servicio">
+                    <a href="/php/restart/<?= $php["version"] ?>" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Reiniciar PHP <?= $php["version"] ?>-FPM?')" title="Reiniciar Servicio">
                       <i class="bi bi-arrow-clockwise me-1"></i> Reiniciar
                     </a>
+                    <?php if ($php["version"] !== "8.5" && $domainCount === 0): ?>
+                      <a href="/php/uninstall/<?= $php["version"] ?>" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Deseas desinstalar PHP <?= $php["version"] ?> del servidor?')" title="Desinstalar PHP <?= $php["version"] ?>">
+                        <i class="bi bi-trash me-1"></i> Desinstalar
+                      </a>
+                    <?php endif; ?>
                   <?php else: ?>
-                    <span class="text-muted small">No disponible</span>
+                    <a href="/php/install/<?= $php["version"] ?>" class="btn btn-sm btn-outline-success text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Deseas instalar PHP <?= $php["version"] ?> y sus extensiones en el servidor? Este proceso tomara unos segundos.')" title="Instalar PHP <?= $php["version"] ?>">
+                      <i class="bi bi-download me-1"></i> Instalar
+                    </a>
                   <?php endif; ?>
                 </div>
               </td>

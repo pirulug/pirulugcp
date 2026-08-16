@@ -190,15 +190,14 @@ systemctl restart nginx apache2 mariadb
 ```bash
 apt-get install -y imagemagick unzip zip git curl
 
-PHP_VERSIONS=("7.4" "8.0" "8.1" "8.2" "8.3" "8.4" "8.5")
-for ver in "${PHP_VERSIONS[@]}"; do
-  apt-get install -y "php${ver}-fpm" "php${ver}-cli" "php${ver}-mysql" "php${ver}-common" \
-                     "php${ver}-mbstring" "php${ver}-xml" "php${ver}-curl" "php${ver}-zip" \
-                     "php${ver}-gd" "php${ver}-sqlite3" "php${ver}-imagick" "php${ver}-intl" \
-                     "php${ver}-bcmath" || true
-  systemctl enable "php${ver}-fpm" || true
-  systemctl restart "php${ver}-fpm" || true
-done
+# Instalar version base PHP 8.5 (las demas versiones se instalan bajo demanda desde el panel)
+ver="8.5"
+apt-get install -y "php${ver}-fpm" "php${ver}-cli" "php${ver}-mysql" "php${ver}-common" \
+                   "php${ver}-mbstring" "php${ver}-xml" "php${ver}-curl" "php${ver}-zip" \
+                   "php${ver}-gd" "php${ver}-sqlite3" "php${ver}-imagick" "php${ver}-intl" \
+                   "php${ver}-bcmath" || true
+systemctl enable "php${ver}-fpm" || true
+systemctl restart "php${ver}-fpm" || true
 
 # Instalar Composer
 curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer

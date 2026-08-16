@@ -69,7 +69,7 @@ El instalador ejecutara automaticamente los siguientes modulos en orden:
 1. Comprobacion de arquitectura y compatibilidad Debian/Ubuntu.
 2. Configuracion de repositorios APT para PHP multi-version (Ondrej Sury / Debian).
 3. Instalacion y configuracion del stack web hibrido (Nginx Proxy en puertos 80/443 y Apache Backend en puerto 8080).
-4. Instalacion de todas las versiones de PHP-FPM (7.4, 8.0, 8.1, 8.2, 8.3, 8.4, 8.5) y Composer.
+4. Instalacion de la version base PHP-FPM 8.5 y Composer (las demas versiones 7.4 a 8.4 se pueden instalar bajo demanda desde el panel de control).
 5. Descarga y despliegue de phpMyAdmin con modo Signon SSO.
 6. Despliegue del nucleo de PiruluGCP en `/usr/local/pirulugcp`, base de datos interna SQLite y permisos sudoers.
 7. Configuracion de VirtualHost Nginx en puerto 8083 para el acceso al panel.

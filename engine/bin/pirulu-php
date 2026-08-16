@@ -249,9 +249,61 @@ php_save_raw_ini() {
     echo "{\"status\":\"success\",\"message\":\"Archivo php.ini guardado y PHP $version reiniciado exitosamente\"}"
 }
 
+php_install() {
+    local version="$1"
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+
+    log_info "Iniciando instalacion bajo demanda de PHP $version y extensiones..."
+
+    DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        "php${version}-fpm" "php${version}-cli" "php${version}-mysql" "php${version}-common" \
+        "php${version}-mbstring" "php${version}-xml" "php${version}-curl" "php${version}-zip" \
+        "php${version}-gd" "php${version}-sqlite3" "php${version}-imagick" "php${version}-intl" \
+        "php${version}-bcmath"
+
+    if [ $? -ne 0 ]; then
+        exit_error "Error al instalar los paquetes de PHP $version mediante apt"
+    fi
+
+    if systemctl list-unit-files | grep -q "php${version}-fpm"; then
+        systemctl enable "php${version}-fpm" >/dev/null 2>&1 || true
+        systemctl restart "php${version}-fpm" >/dev/null 2>&1 || true
+    fi
+
+    log_info "PHP $version instalado y servicio activado exitosamente"
+    echo "{\"status\":\"success\",\"message\":\"PHP $version instalado y activado exitosamente\"}"
+}
+
+php_remove() {
+    local version="$1"
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+
+    if [ "$version" = "8.5" ]; then
+        exit_error "No se permite desinstalar la version base del panel (PHP 8.5)"
+    fi
+
+    log_info "Desinstalando version PHP $version..."
+
+    systemctl stop "php${version}-fpm" >/dev/null 2>&1 || true
+    systemctl disable "php${version}-fpm" >/dev/null 2>&1 || true
+
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y "php${version}*" >/dev/null 2>&1 || true
+    rm -rf "/etc/php/${version}"
+
+    log_info "PHP $version desinstalado exitosamente"
+    echo "{\"status\":\"success\",\"message\":\"PHP $version desinstalado exitosamente del servidor\"}"
+}
+
 case "$ACTION" in
     versions)
         php_versions_list
+        ;;
+    install)
+        php_install "$PARAM1"
+        ;;
+    remove|uninstall)
+        php_remove "$PARAM1"
         ;;
     pool-add)
         php_pool_add "$PARAM1" "$PARAM2" "$PARAM3" "$PARAM4" "$PARAM5" "$PARAM6"

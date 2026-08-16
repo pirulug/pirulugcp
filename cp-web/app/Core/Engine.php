@@ -162,16 +162,37 @@ class Engine {
           "message" => "Configuración de PHP actualizada y servicio reiniciado exitosamente"
         ];
       }
+      if ($action === "install") {
+        $ver = $args[1] ?? "8.4";
+        return [
+          "status"  => "success",
+          "message" => "PHP {$ver} instalado y activado exitosamente"
+        ];
+      }
+      if ($action === "remove" || $action === "uninstall") {
+        $ver = $args[1] ?? "8.4";
+        return [
+          "status"  => "success",
+          "message" => "PHP {$ver} desinstalado exitosamente del servidor"
+        ];
+      }
+      if ($action === "restart") {
+        $ver = $args[1] ?? "8.5";
+        return [
+          "status"  => "success",
+          "message" => "PHP-FPM {$ver} reiniciado"
+        ];
+      }
       return [
         "status" => "success",
         "versions" => [
-          ["version" => "7.4", "installed" => true, "status" => "inactive"],
+          ["version" => "7.4", "installed" => false, "status" => "inactive"],
           ["version" => "8.0", "installed" => false, "status" => "inactive"],
-          ["version" => "8.1", "installed" => true, "status" => "active"],
-          ["version" => "8.2", "installed" => true, "status" => "active"],
-          ["version" => "8.3", "installed" => true, "status" => "active"],
-          ["version" => "8.4", "installed" => true, "status" => "active"],
-          ["version" => "8.5", "installed" => false, "status" => "inactive"]
+          ["version" => "8.1", "installed" => false, "status" => "inactive"],
+          ["version" => "8.2", "installed" => false, "status" => "inactive"],
+          ["version" => "8.3", "installed" => false, "status" => "inactive"],
+          ["version" => "8.4", "installed" => false, "status" => "inactive"],
+          ["version" => "8.5", "installed" => true,  "status" => "active"]
         ]
       ];
     }
