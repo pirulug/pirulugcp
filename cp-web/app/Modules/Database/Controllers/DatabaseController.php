@@ -8,9 +8,9 @@ use Pirulu\Core\Engine;
 use Pirulu\Core\View;
 
 class DatabaseController {
-  private static string $encryptionKey = "pirulugcp_pma_sso_key_2026";
+  private static $encryptionKey = "pirulugcp_pma_sso_key_2026";
 
-  public function index(): void {
+  public function index() {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -27,7 +27,7 @@ class DatabaseController {
     ]);
   }
 
-  public function create(): void {
+  public function create() {
     Auth::requireAuth();
     $db = Database::getConnection();
     $users = $db->query("SELECT id, username FROM users ORDER BY username ASC")->fetchAll();
@@ -38,7 +38,7 @@ class DatabaseController {
     ]);
   }
 
-  public function store(): void {
+  public function store() {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -83,7 +83,7 @@ class DatabaseController {
     exit();
   }
 
-  public function edit(string $id): void {
+  public function edit($id) {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -99,27 +99,18 @@ class DatabaseController {
 
     $username = $database["username"] ?? "admin";
     $prefix = $username . "_";
-
-    $shortDbName = $database["db_name"];
-    if (strpos($shortDbName, $prefix) === 0) {
-      $shortDbName = substr($shortDbName, strlen($prefix));
-    }
-
-    $shortDbUser = $database["db_user"];
-    if (strpos($shortDbUser, $prefix) === 0) {
-      $shortDbUser = substr($shortDbUser, strlen($prefix));
-    }
+    $shortDbName = (strpos($database["db_name"], $prefix) === 0) ? substr($database["db_name"], strlen($prefix)) : $database["db_name"];
+    $shortDbUser = (strpos($database["db_user"], $prefix) === 0) ? substr($database["db_user"], strlen($prefix)) : $database["db_user"];
 
     View::render("Modules/Database/Views/edit", [
-      "pageTitle" => "Editar Bases de Datos - PiruluGCP",
+      "pageTitle" => "Editar Base de Datos - PiruluGCP",
       "database" => $database,
-      "prefix" => $prefix,
       "shortDbName" => $shortDbName,
       "shortDbUser" => $shortDbUser
     ]);
   }
 
-  public function update(string $id): void {
+  public function update($id) {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -133,18 +124,19 @@ class DatabaseController {
       exit();
     }
 
-    $dbPass = trim($_POST["db_password"] ?? "");
+    $newPass = trim($_POST["db_password"] ?? "");
 
-    if (!empty($dbPass)) {
-      if (strlen($dbPass) < 8) {
-        View::setFlash("danger", "La contrasena debe contener al menos 8 caracteres.");
+    if (!empty($newPass)) {
+      if (strlen($newPass) < 8) {
+        View::setFlash("danger", "La nueva contrasena debe contener al menos 8 caracteres.");
         header("Location: /database/edit/" . (int)$id);
         exit();
       }
 
-      $res = Engine::execute("pirulu-db", ["passwd", $dbRow["db_user"], $dbPass]);
+      $res = Engine::execute("pirulu-db", ["passwd", $dbRow["db_user"], $newPass]);
+
       if (isset($res["status"]) && $res["status"] === "success") {
-        $encPass = self::encryptPassword($dbPass);
+        $encPass = self::encryptPassword($newPass);
         $stmt = $db->prepare("UPDATE databases SET db_password_enc = ? WHERE id = ?");
         $stmt->execute([$encPass, (int)$id]);
         View::setFlash("success", "Contrasena de la base de datos " . $dbRow["db_name"] . " actualizada exitosamente.");
@@ -159,7 +151,7 @@ class DatabaseController {
     exit();
   }
 
-  public function autologin(string $id): void {
+  public function autologin($id) {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -190,7 +182,7 @@ class DatabaseController {
     exit();
   }
 
-  public function pmaRedirect(): void {
+  public function pmaRedirect() {
     Auth::requireAuth();
     $currentUser = Auth::user();
     $db = Database::getConnection();
@@ -223,7 +215,7 @@ class DatabaseController {
     exit();
   }
 
-  public function delete(string $id): void {
+  public function delete($id) {
     Auth::requireAuth();
     $db = Database::getConnection();
 
@@ -244,13 +236,13 @@ class DatabaseController {
     exit();
   }
 
-  private static function encryptPassword(string $password): string {
+  private static function encryptPassword($password) {
     $iv = openssl_random_pseudo_bytes(16);
     $encrypted = openssl_encrypt($password, "aes-256-cbc", self::$encryptionKey, 0, $iv);
     return base64_encode($iv . $encrypted);
   }
 
-  private static function decryptPassword(string $encryptedData): string {
+  private static function decryptPassword($encryptedData) {
     if (empty($encryptedData)) {
       return "";
     }

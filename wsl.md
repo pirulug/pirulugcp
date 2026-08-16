@@ -10,17 +10,14 @@ Ejecuta el siguiente comando en PowerShell desde la raiz del proyecto (`D:\Devel
 
 ```powershell
 wsl -d Debian -u root -- bash -c "
-  SRC='/mnt/d/Development/pirulugcp'
-  DST='/usr/local/pirulugcp'
-
   # 1. Sincronizar archivos del proyecto (excluyendo git)
-  rsync -av --exclude='.git' \${SRC}/ \${DST}/
+  rsync -av --exclude='.git' /mnt/d/Development/pirulugcp/ /usr/local/pirulugcp/
 
   # 2. Asignar permisos de ejecucion a los binarios del engine
-  chmod +x \${DST}/engine/bin/*
+  chmod +x /usr/local/pirulugcp/engine/bin/*
 
   # 3. Asignar propietario web para la interfaz y configuracion
-  chown -R www-data:www-data \${DST}/cp-web \${DST}/config /var/lib/pirulugcp /var/log/pirulugcp
+  chown -R www-data:www-data /usr/local/pirulugcp/cp-web /usr/local/pirulugcp/config /var/lib/pirulugcp /var/log/pirulugcp
 
   # 4. Recargar servicio PHP del panel y servidores web
   systemctl restart pirulugcp-php 2>/dev/null || true

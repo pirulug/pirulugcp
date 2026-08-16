@@ -45,8 +45,7 @@
       <div class="mb-3">
         <label for="db_type" class="form-label">Tipo</label>
         <select class="form-select" id="db_type" name="db_type">
-          <option value="mysql" selected>mysql</option>
-          <option value="mariadb">mariadb</option>
+          <option value="mariadb" selected>mariadb</option>
         </select>
       </div>
 
