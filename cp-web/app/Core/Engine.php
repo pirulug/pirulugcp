@@ -200,6 +200,39 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-server") {
+            if ($action === "get-config") {
+                return [
+                    "status"        => "success",
+                    "hostname"      => "panel.pirulugcp.local",
+                    "timezone"      => "America/Lima",
+                    "current_time"  => date("Y-m-d H:i:s T"),
+                    "server_ip"     => "192.168.1.100",
+                    "public_key"    => "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPanelDeployKeySimulatedForPiruluGCPExampleKey panel-deploy@pirulugcp",
+                    "git_connected" => true,
+                    "remote_url"    => "git@github.com:usuario/pirulugcp.git",
+                    "branch"        => "main",
+                    "last_commit"   => "b487976e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+                    "last_author"   => "Pirulug",
+                    "last_message"  => "feat(server): Server configuration and panel updates"
+                ];
+            }
+            if ($action === "generate-key" || $action === "get-key") {
+                return [
+                    "status"     => "success",
+                    "public_key" => "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPanelDeployKeySimulatedForPiruluGCPExampleKey panel-deploy@pirulugcp"
+                ];
+            }
+            return [
+                "status"         => "success",
+                "message"        => "Operacion de servidor ejecutada en modo simulacion",
+                "commit_hash"    => "b487976e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+                "commit_author"  => "Pirulug",
+                "commit_message" => "Update panel code",
+                "log"            => "Fetching origin\nAlready up to date.\nPermissions applied\nServices reloaded"
+            ];
+        }
+
         return [
             "status"  => "success",
             "message" => "Operacion completada exitosamente (Modo desarrollo)"

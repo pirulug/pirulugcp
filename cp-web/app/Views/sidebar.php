@@ -61,6 +61,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
 
             <li class="sidebar-header">Servidor &amp; Mantenimiento</li>
 
+            <li class="sidebar-item <?= (strpos($currentUri, "/server") === 0) ? "active" : "" ?>">
+                <a class="sidebar-link" href="/server">
+                    <i class="align-middle bi bi-hdd-network"></i>
+                    <span class="align-middle">Configuración Servidor</span>
+                </a>
+            </li>
+
             <li class="sidebar-item <?= (strpos($currentUri, "/system") === 0) ? "active" : "" ?>">
                 <a class="sidebar-link" href="/system">
                     <i class="align-middle bi bi-hdd-stack"></i>

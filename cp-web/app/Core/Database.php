@@ -103,6 +103,39 @@ class Database {
             // Columna ya existe
         }
 
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS server_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                server_hostname TEXT NOT NULL DEFAULT 'localhost',
+                panel_domain TEXT DEFAULT '',
+                server_timezone TEXT NOT NULL DEFAULT 'UTC',
+                panel_git_repo TEXT,
+                panel_git_branch TEXT NOT NULL DEFAULT 'main',
+                panel_git_is_private INTEGER NOT NULL DEFAULT 1,
+                panel_webhook_token TEXT,
+                panel_auto_update INTEGER NOT NULL DEFAULT 0,
+                panel_last_update_at DATETIME,
+                panel_last_update_status TEXT,
+                panel_last_update_log TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        ");
+
+        try {
+            $db->exec("ALTER TABLE server_settings ADD COLUMN panel_domain TEXT DEFAULT ''");
+        } catch (PDOException $e) {
+            // Columna ya existe
+        }
+
+        try {
+            $db->exec("
+                INSERT OR IGNORE INTO server_settings (id, server_hostname, panel_domain, server_timezone, panel_git_branch, panel_git_is_private, panel_auto_update)
+                VALUES (1, 'localhost', '', 'UTC', 'main', 1, 0);
+            ");
+        } catch (PDOException $e) {
+            // Ya existe
+        }
+
         // Comprobar si falta la columna db_password_enc en instalaciones existentes
         try {
             $db->query("SELECT db_password_enc FROM databases LIMIT 1");

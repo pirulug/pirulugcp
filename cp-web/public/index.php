@@ -82,6 +82,7 @@ use Pirulu\Modules\Logs\Controllers\LogsController;
 use Pirulu\Modules\FileManager\Controllers\FileManagerController;
 use Pirulu\Modules\Firewall\Controllers\FirewallController;
 use Pirulu\Modules\Git\Controllers\GitController;
+use Pirulu\Modules\Server\Controllers\ServerController;
 
 $router = new Router();
 
@@ -150,6 +151,17 @@ $router->get("/database/delete/{id}", [DatabaseController::class, "delete"]);
 // Rutas de Sistema y Servicios
 $router->get("/system", [SystemController::class, "index"]);
 $router->post("/system/action", [SystemController::class, "serviceAction"]);
+
+// Rutas de Configuracion del Servidor y Actualizaciones del Panel (GitHub)
+$router->get("/server", [ServerController::class, "index"]);
+$router->post("/server/hostname", [ServerController::class, "setHostname"]);
+$router->post("/server/panel-domain", [ServerController::class, "setPanelDomain"]);
+$router->post("/server/timezone", [ServerController::class, "setTimezone"]);
+$router->post("/server/git/connect", [ServerController::class, "connectGit"]);
+$router->post("/server/git/update", [ServerController::class, "updatePanel"]);
+$router->get("/server/git/generate-key", [ServerController::class, "generateKey"]);
+$router->get("/api/server/webhook/{token}", [ServerController::class, "webhook"]);
+$router->post("/api/server/webhook/{token}", [ServerController::class, "webhook"]);
 
 // Rutas de Visor de Logs
 $router->get("/logs", [LogsController::class, "index"]);
