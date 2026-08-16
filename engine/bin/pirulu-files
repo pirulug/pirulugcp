@@ -114,7 +114,86 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"message\":\"Archivo ZIP extraido correctamente\"}"
         ;;
 
-    import|move)
+    copy)
+        SRC_PATH="$TARGET_PATH"
+        DEST_PATH="$PARAM1"
+        OWNER_USER="$PARAM2"
+        validate_safe_path "$SRC_PATH"
+        validate_safe_path "$DEST_PATH"
+
+        if [ ! -e "$SRC_PATH" ]; then
+            exit_error "El elemento de origen no existe: $SRC_PATH"
+        fi
+
+        DEST_PARENT=$(dirname "$DEST_PATH")
+        mkdir -p "$DEST_PARENT"
+
+        cp -r "$SRC_PATH" "$DEST_PATH"
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown -R "${OWNER_USER}:${OWNER_USER}" "$DEST_PATH"
+        fi
+        echo "{\"status\":\"success\",\"message\":\"Elemento copiado correctamente\"}"
+        ;;
+
+    rename|move)
+        SRC_PATH="$TARGET_PATH"
+        DEST_PATH="$PARAM1"
+        OWNER_USER="$PARAM2"
+        validate_safe_path "$SRC_PATH"
+        validate_safe_path "$DEST_PATH"
+
+        if [ ! -e "$SRC_PATH" ]; then
+            exit_error "El elemento de origen no existe: $SRC_PATH"
+        fi
+
+        DEST_PARENT=$(dirname "$DEST_PATH")
+        mkdir -p "$DEST_PARENT"
+
+        mv -f "$SRC_PATH" "$DEST_PATH"
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown -R "${OWNER_USER}:${OWNER_USER}" "$DEST_PATH"
+        fi
+        echo "{\"status\":\"success\",\"message\":\"Elemento movido/renombrado correctamente\"}"
+        ;;
+
+    zip|compress)
+        validate_safe_path "$TARGET_PATH"
+        ZIP_DEST="$PARAM1"
+        OWNER_USER="$PARAM2"
+        validate_safe_path "$ZIP_DEST"
+
+        if [ ! -e "$TARGET_PATH" ]; then
+            exit_error "El archivo o carpeta no existe: $TARGET_PATH"
+        fi
+
+        PARENT_DIR=$(dirname "$TARGET_PATH")
+        ITEM_NAME=$(basename "$TARGET_PATH")
+
+        cd "$PARENT_DIR" || exit 1
+        if command -v zip >/dev/null 2>&1; then
+            zip -r -q "$ZIP_DEST" "$ITEM_NAME"
+        else
+            python3 -c "import zipfile, os
+with zipfile.ZipFile('$ZIP_DEST', 'w', zipfile.ZIP_DEFLATED) as z:
+    if os.path.isdir('$ITEM_NAME'):
+        for root, dirs, files in os.walk('$ITEM_NAME'):
+            for f in files:
+                p = os.path.join(root, f)
+                z.write(p, p)
+    else:
+        z.write('$ITEM_NAME', '$ITEM_NAME')"
+        fi
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown "${OWNER_USER}:${OWNER_USER}" "$ZIP_DEST"
+        fi
+        chmod 644 "$ZIP_DEST"
+        echo "{\"status\":\"success\",\"message\":\"Elemento comprimido correctamente en ZIP\"}"
+        ;;
+
+    import)
         SRC_FILE="$TARGET_PATH"
         DEST_FILE="$PARAM1"
         OWNER_USER="$PARAM2"
@@ -158,7 +237,7 @@ case "$ACTION" in
         ;;
 
     *)
-        echo "Uso: pirulu-files <list|mkdir|touch|delete|chmod|chown|unzip|import|write> <ruta> [param1] [param2]"
+        echo "Uso: pirulu-files <list|mkdir|touch|delete|chmod|chown|unzip|import|write|copy|rename|move|compress> <ruta> [param1] [param2]"
         exit 1
         ;;
 esac

@@ -126,37 +126,67 @@
                             </td>
                             <td class="text-muted small"><?= htmlspecialchars($item["mtime"]) ?></td>
                             <td class="text-end pe-3 text-nowrap">
-                                <div class="d-flex justify-content-end gap-1">
-                                    <?php if (!$item["is_dir"]): ?>
-                                        <?php if ($editable): ?>
-                                            <button type="button" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" onclick="openEditor('<?= htmlspecialchars($item["rel_path"]) ?>')" title="Editar Archivo">
-                                                <i class="bi bi-pencil me-1"></i> Editar
-                                            </button>
-                                        <?php endif; ?>
-                                        <?php if ($item["ext"] === "zip"): ?>
-                                            <form action="/files/extract" method="POST" class="d-inline m-0" onsubmit="return confirm('Extraer <?= htmlspecialchars($item["name"]) ?> en este directorio?')">
-                                                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
-                                                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
-                                                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
-                                                <input type="hidden" name="zip_file" value="<?= htmlspecialchars($item["name"]) ?>">
-                                                <button type="submit" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" title="Descomprimir ZIP">
-                                                    <i class="bi bi-file-earmark-zip me-1"></i> Extraer
-                                                </button>
-                                            </form>
-                                        <?php endif; ?>
-                                        <a href="/files/download?domain=<?= urlencode($selectedDomain) ?>&path=<?= urlencode($item["rel_path"]) ?>&username=<?= urlencode($currentDomain["username"] ?? "admin") ?>" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap" title="Descargar">
-                                            <i class="bi bi-download me-1"></i> Bajar
-                                        </a>
-                                    <?php endif; ?>
-                                    <form action="/files/delete" method="POST" class="d-inline m-0" onsubmit="return confirm('Eliminar <?= htmlspecialchars($item["name"]) ?>?')">
-                                        <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
-                                        <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
-                                        <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
-                                        <input type="hidden" name="item" value="<?= htmlspecialchars($item["name"]) ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" title="Eliminar">
-                                            <i class="bi bi-trash me-1"></i> Eliminar
+                                <div class="d-flex justify-content-end align-items-center gap-1">
+                                    <?php if (!$item["is_dir"] && $editable): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" onclick="openEditor('<?= htmlspecialchars($item["rel_path"]) ?>')" title="Editar Archivo">
+                                            <i class="bi bi-pencil me-1"></i> Editar
                                         </button>
-                                    </form>
+                                    <?php endif; ?>
+                                    <?php if (!$item["is_dir"] && $item["ext"] === "zip"): ?>
+                                        <form action="/files/extract" method="POST" class="d-inline m-0" onsubmit="return confirm('Extraer <?= htmlspecialchars($item["name"]) ?> en este directorio?')">
+                                            <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                                            <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                                            <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                                            <input type="hidden" name="zip_file" value="<?= htmlspecialchars($item["name"]) ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" title="Descomprimir ZIP">
+                                                <i class="bi bi-file-earmark-zip me-1"></i> Extraer
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+
+                                    <div class="dropdown d-inline-block">
+                                        <button class="btn btn-sm btn-outline-secondary text-uppercase fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            <i class="bi bi-three-dots-vertical"></i> Opciones
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                            <li>
+                                                <a class="dropdown-item" href="/files/download?domain=<?= urlencode($selectedDomain) ?>&path=<?= urlencode($item["rel_path"]) ?>&username=<?= urlencode($currentDomain["username"] ?? "admin") ?>">
+                                                    <i class="bi bi-download me-2"></i> Descargar
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="openCopyModal('<?= htmlspecialchars($item["name"]) ?>')">
+                                                    <i class="bi bi-copy me-2"></i> Copiar
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="openMoveModal('<?= htmlspecialchars($item["name"]) ?>')">
+                                                    <i class="bi bi-box-arrow-up-right me-2"></i> Mover
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="openRenameModal('<?= htmlspecialchars($item["name"]) ?>')">
+                                                    <i class="bi bi-pencil-square me-2"></i> Renombrar
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="openCompressModal('<?= htmlspecialchars($item["name"]) ?>')">
+                                                    <i class="bi bi-file-earmark-zip me-2"></i> Comprimir
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" onclick="openChmodModal('<?= htmlspecialchars($item["name"]) ?>', '<?= htmlspecialchars($item["perms"]) ?>')">
+                                                    <i class="bi bi-shield-lock me-2"></i> Permisos (<?= htmlspecialchars($item["perms"]) ?>)
+                                                </button>
+                                            </li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <button type="button" class="dropdown-item text-danger" onclick="openDeleteModal('<?= htmlspecialchars($item["name"]) ?>')">
+                                                    <i class="bi bi-trash me-2 text-danger"></i> <span class="text-danger">Eliminar</span>
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -255,6 +285,155 @@
     </div>
 </div>
 
+<!-- Modal: Copiar Elemento -->
+<div class="modal fade" id="copyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Copiar Elemento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/files/copy" method="POST">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="item" id="copyItem">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="copyDestName" class="form-label">Nombre de la copia <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace" id="copyDestName" name="dest_name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary text-uppercase fw-bold">
+                        <i class="bi bi-copy me-1"></i> Copiar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Mover Elemento -->
+<div class="modal fade" id="moveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mover Elemento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/files/move" method="POST">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="item" id="moveItem">
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">Moviendo: <strong id="moveItemDisplay" class="text-body"></strong></p>
+                    <div class="mb-3">
+                        <label for="moveDestFolder" class="form-label">Carpeta destino (relativa a la raíz del dominio) <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace" id="moveDestFolder" name="dest_folder" placeholder="ej. public_html o public_html/assets" required>
+                        <div class="form-text small">Usa <code>/</code> o déjalo vacío para mover a la raíz del dominio.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary text-uppercase fw-bold">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Mover
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Renombrar Elemento -->
+<div class="modal fade" id="renameModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Renombrar Elemento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/files/rename" method="POST">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="old_name" id="renameOldName">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="renameNewName" class="form-label">Nuevo nombre <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace" id="renameNewName" name="new_name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary text-uppercase fw-bold">
+                        <i class="bi bi-pencil-square me-1"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Comprimir Elemento -->
+<div class="modal fade" id="compressModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Comprimir en ZIP</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/files/compress" method="POST">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="item" id="compressItem">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="compressZipName" class="form-label">Nombre del archivo ZIP <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace" id="compressZipName" name="zip_name" placeholder="archivo.zip" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary text-uppercase fw-bold">
+                        <i class="bi bi-file-earmark-zip me-1"></i> Comprimir
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Eliminar Elemento -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Eliminar Elemento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/files/delete" method="POST">
+                <input type="hidden" name="domain" value="<?= htmlspecialchars($selectedDomain) ?>">
+                <input type="hidden" name="path" value="<?= htmlspecialchars($reqPath) ?>">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($currentDomain["username"] ?? "admin") ?>">
+                <input type="hidden" name="item" id="deleteItem">
+                <div class="modal-body">
+                    <p class="mb-0">¿Estás seguro de eliminar <strong id="deleteItemDisplay" class="text-danger"></strong>? Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm text-uppercase fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger btn-sm text-uppercase fw-bold">
+                        <i class="bi bi-trash me-1"></i> Eliminar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Editor de Codigo en Linea -->
 <div class="modal fade" id="editorModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -296,6 +475,10 @@
                     <div class="mb-3">
                         <label for="chmodMode" class="form-label">Permiso octal (ej. 0755 o 0644) <span class="text-danger">*</span></label>
                         <input type="text" class="form-control font-monospace" id="chmodMode" name="mode" required>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-xs btn-outline-secondary flex-fill" onclick="document.getElementById('chmodMode').value='0644'">0644 (Archivo)</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary flex-fill" onclick="document.getElementById('chmodMode').value='0755'">0755 (Carpeta)</button>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -367,6 +550,42 @@ function saveEditorContent() {
     .catch(err => {
         status.innerHTML = "<span class='text-danger fw-bold'>Error al guardar.</span>";
     });
+}
+
+function openCopyModal(itemName) {
+    document.getElementById("copyItem").value = itemName;
+    document.getElementById("copyDestName").value = itemName + "_copia";
+    const modal = new bootstrap.Modal(document.getElementById("copyModal"));
+    modal.show();
+}
+
+function openMoveModal(itemName) {
+    document.getElementById("moveItem").value = itemName;
+    document.getElementById("moveItemDisplay").textContent = itemName;
+    document.getElementById("moveDestFolder").value = "<?= htmlspecialchars($reqPath) ?>";
+    const modal = new bootstrap.Modal(document.getElementById("moveModal"));
+    modal.show();
+}
+
+function openRenameModal(itemName) {
+    document.getElementById("renameOldName").value = itemName;
+    document.getElementById("renameNewName").value = itemName;
+    const modal = new bootstrap.Modal(document.getElementById("renameModal"));
+    modal.show();
+}
+
+function openCompressModal(itemName) {
+    document.getElementById("compressItem").value = itemName;
+    document.getElementById("compressZipName").value = itemName + ".zip";
+    const modal = new bootstrap.Modal(document.getElementById("compressModal"));
+    modal.show();
+}
+
+function openDeleteModal(itemName) {
+    document.getElementById("deleteItem").value = itemName;
+    document.getElementById("deleteItemDisplay").textContent = itemName;
+    const modal = new bootstrap.Modal(document.getElementById("deleteModal"));
+    modal.show();
 }
 
 function openChmodModal(itemName, currentPerms) {

@@ -316,6 +316,135 @@ class FileManagerController {
         exit;
     }
 
+    public function copyItem(): void {
+        Auth::requireAuth();
+        $domain = trim($_POST["domain"] ?? "");
+        $path = trim($_POST["path"] ?? "");
+        $username = trim($_POST["username"] ?? "admin");
+        $item = trim($_POST["item"] ?? "");
+        $destName = trim($_POST["dest_name"] ?? "");
+
+        $baseDir = "/home/" . $username . "/web/" . $domain;
+        if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN" && !is_dir($baseDir)) {
+            $baseDir = dirname(__DIR__, 4) . "/scratch/web/" . $domain;
+        }
+
+        $source = empty($path) ? ($baseDir . "/" . $item) : ($baseDir . "/" . trim($path, "/") . "/" . $item);
+        $destName = str_replace(["..", "\\"], "", $destName);
+        if (empty($destName)) {
+            $destName = $item . "_copia";
+        }
+        $dest = empty($path) ? ($baseDir . "/" . $destName) : ($baseDir . "/" . trim($path, "/") . "/" . $destName);
+
+        $res = Engine::execute("pirulu-files", ["copy", $source, $dest, $username]);
+        if (isset($res["status"]) && $res["status"] === "success") {
+            View::setFlash("success", "Elemento copiado como " . htmlspecialchars($destName) . " exitosamente.");
+        } else {
+            View::setFlash("danger", "Error al copiar: " . htmlspecialchars($res["message"] ?? "Error"));
+        }
+
+        header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+        exit;
+    }
+
+    public function moveItem(): void {
+        Auth::requireAuth();
+        $domain = trim($_POST["domain"] ?? "");
+        $path = trim($_POST["path"] ?? "");
+        $username = trim($_POST["username"] ?? "admin");
+        $item = trim($_POST["item"] ?? "");
+        $destFolder = trim($_POST["dest_folder"] ?? "");
+
+        $baseDir = "/home/" . $username . "/web/" . $domain;
+        if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN" && !is_dir($baseDir)) {
+            $baseDir = dirname(__DIR__, 4) . "/scratch/web/" . $domain;
+        }
+
+        $source = empty($path) ? ($baseDir . "/" . $item) : ($baseDir . "/" . trim($path, "/") . "/" . $item);
+        $destFolder = str_replace(["..", "\\"], "", $destFolder);
+        $destFolder = trim($destFolder, "/");
+        $dest = empty($destFolder) ? ($baseDir . "/" . $item) : ($baseDir . "/" . $destFolder . "/" . $item);
+
+        $res = Engine::execute("pirulu-files", ["rename", $source, $dest, $username]);
+        if (isset($res["status"]) && $res["status"] === "success") {
+            View::setFlash("success", "Elemento movido a /" . htmlspecialchars($destFolder) . " exitosamente.");
+        } else {
+            View::setFlash("danger", "Error al mover: " . htmlspecialchars($res["message"] ?? "Error"));
+        }
+
+        header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+        exit;
+    }
+
+    public function renameItem(): void {
+        Auth::requireAuth();
+        $domain = trim($_POST["domain"] ?? "");
+        $path = trim($_POST["path"] ?? "");
+        $username = trim($_POST["username"] ?? "admin");
+        $oldName = trim($_POST["old_name"] ?? "");
+        $newName = trim($_POST["new_name"] ?? "");
+
+        $newName = str_replace(["/", "\\", ".."], "", $newName);
+        if (empty($newName)) {
+            View::setFlash("danger", "El nuevo nombre no es valido.");
+            header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+            exit;
+        }
+
+        $baseDir = "/home/" . $username . "/web/" . $domain;
+        if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN" && !is_dir($baseDir)) {
+            $baseDir = dirname(__DIR__, 4) . "/scratch/web/" . $domain;
+        }
+
+        $source = empty($path) ? ($baseDir . "/" . $oldName) : ($baseDir . "/" . trim($path, "/") . "/" . $oldName);
+        $dest = empty($path) ? ($baseDir . "/" . $newName) : ($baseDir . "/" . trim($path, "/") . "/" . $newName);
+
+        $res = Engine::execute("pirulu-files", ["rename", $source, $dest, $username]);
+        if (isset($res["status"]) && $res["status"] === "success") {
+            View::setFlash("success", "Elemento renombrado a " . htmlspecialchars($newName) . " exitosamente.");
+        } else {
+            View::setFlash("danger", "Error al renombrar: " . htmlspecialchars($res["message"] ?? "Error"));
+        }
+
+        header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+        exit;
+    }
+
+    public function compressItem(): void {
+        Auth::requireAuth();
+        $domain = trim($_POST["domain"] ?? "");
+        $path = trim($_POST["path"] ?? "");
+        $username = trim($_POST["username"] ?? "admin");
+        $item = trim($_POST["item"] ?? "");
+        $zipName = trim($_POST["zip_name"] ?? "");
+
+        $zipName = str_replace(["/", "\\", ".."], "", $zipName);
+        if (empty($zipName)) {
+            $zipName = $item . ".zip";
+        }
+        if (!str_ends_with(strtolower($zipName), ".zip")) {
+            $zipName .= ".zip";
+        }
+
+        $baseDir = "/home/" . $username . "/web/" . $domain;
+        if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN" && !is_dir($baseDir)) {
+            $baseDir = dirname(__DIR__, 4) . "/scratch/web/" . $domain;
+        }
+
+        $target = empty($path) ? ($baseDir . "/" . $item) : ($baseDir . "/" . trim($path, "/") . "/" . $item);
+        $zipDest = empty($path) ? ($baseDir . "/" . $zipName) : ($baseDir . "/" . trim($path, "/") . "/" . $zipName);
+
+        $res = Engine::execute("pirulu-files", ["zip", $target, $zipDest, $username]);
+        if (isset($res["status"]) && $res["status"] === "success") {
+            View::setFlash("success", "Elemento comprimido correctamente en " . htmlspecialchars($zipName) . ".");
+        } else {
+            View::setFlash("danger", "Error al comprimir: " . htmlspecialchars($res["message"] ?? "Error"));
+        }
+
+        header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
+        exit;
+    }
+
     public function extractZip(): void {
         Auth::requireAuth();
         $domain = trim($_POST["domain"] ?? "");
@@ -356,16 +485,33 @@ class FileManagerController {
 
         $filePath = $baseDir . "/" . ltrim($path, "/");
 
-        if (file_exists($filePath) && is_file($filePath)) {
-            header("Content-Description: File Transfer");
-            header("Content-Type: application/octet-stream");
-            header("Content-Disposition: attachment; filename=\"" . basename($filePath) . "\"");
-            header("Expires: 0");
-            header("Cache-Control: must-revalidate");
-            header("Pragma: public");
-            header("Content-Length: " . filesize($filePath));
-            readfile($filePath);
-            exit;
+        if (file_exists($filePath)) {
+            if (is_dir($filePath)) {
+                $zipTemp = sys_get_temp_dir() . "/" . basename($filePath) . "_" . uniqid() . ".zip";
+                Engine::execute("pirulu-files", ["zip", $filePath, $zipTemp, $username]);
+                if (file_exists($zipTemp)) {
+                    header("Content-Description: File Transfer");
+                    header("Content-Type: application/zip");
+                    header("Content-Disposition: attachment; filename=\"" . basename($filePath) . ".zip\"");
+                    header("Expires: 0");
+                    header("Cache-Control: must-revalidate");
+                    header("Pragma: public");
+                    header("Content-Length: " . filesize($zipTemp));
+                    readfile($zipTemp);
+                    @unlink($zipTemp);
+                    exit;
+                }
+            } else {
+                header("Content-Description: File Transfer");
+                header("Content-Type: application/octet-stream");
+                header("Content-Disposition: attachment; filename=\"" . basename($filePath) . "\"");
+                header("Expires: 0");
+                header("Cache-Control: must-revalidate");
+                header("Pragma: public");
+                header("Content-Length: " . filesize($filePath));
+                readfile($filePath);
+                exit;
+            }
         }
 
         View::setFlash("danger", "Archivo no encontrado para descarga.");
