@@ -4,9 +4,12 @@
 setup_nginx_vhost() {
     echo "[Paso 7/7] Configurando VirtualHost de Nginx para PiruluGCP en puerto 8083..."
 
-    local panel_php_sock="/run/php/php8.2-fpm.sock"
+    local panel_php_sock="/run/php/pirulugcp-panel.sock"
     if [ ! -S "$panel_php_sock" ]; then
-        panel_php_sock=$(find /run/php/ -name "php*-fpm.sock" | head -n 1)
+        panel_php_sock="/run/php/php8.2-fpm.sock"
+        if [ ! -S "$panel_php_sock" ]; then
+            panel_php_sock=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
+        fi
     fi
 
     cat <<EOF > /etc/nginx/sites-available/pirulugcp.conf

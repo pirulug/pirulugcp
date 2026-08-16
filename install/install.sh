@@ -79,6 +79,7 @@ main() {
     setup_phpmyadmin
     deploy_pirulugcp_core
     setup_nginx_vhost
+    install_firewall
 
     print_summary
 }

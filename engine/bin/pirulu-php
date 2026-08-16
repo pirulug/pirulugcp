@@ -73,6 +73,23 @@ case "$ACTION" in
             "$TPL_FILE" > "$POOL_FILE"
 
         systemctl restart "php${VERSION}-fpm" > /dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" > /dev/null 2>&1
+
+        # Esperar a que el socket este disponible antes de retornar.
+        # Sin esta espera, reload_servers recargaria Apache antes de que el
+        # socket exista, manteniendo el pool anterior activo.
+        WAIT=0
+        TIMEOUT=15
+        while [ ! -S "$SOCKET" ] && [ "$WAIT" -lt "$TIMEOUT" ]; do
+            sleep 1
+            WAIT=$((WAIT + 1))
+        done
+
+        if [ ! -S "$SOCKET" ]; then
+            log_error "Timeout: el socket $SOCKET no aparecio en ${TIMEOUT}s tras restart de php${VERSION}-fpm"
+        else
+            log_info "Socket $SOCKET listo en ${WAIT}s"
+        fi
+
         log_info "Pool PHP-FPM $POOL_NAME creado para PHP $VERSION"
         echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM creado para PHP $VERSION\"}"
         ;;
@@ -90,7 +107,7 @@ case "$ACTION" in
             POOL_FILE="/etc/php/${ver}/fpm/pool.d/${POOL_NAME}.conf"
             if [ -f "$POOL_FILE" ]; then
                 rm -f "$POOL_FILE"
-                systemctl restart "php${ver}-fpm" >/dev/null 2>&1 || systemctl reload "php${ver}-fpm" >/dev/null 2>&1
+                systemctl restart "php${ver}-fpm" > /dev/null 2>&1 || systemctl reload "php${ver}-fpm" > /dev/null 2>&1
             fi
         done
 
