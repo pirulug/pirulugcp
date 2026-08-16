@@ -151,6 +151,61 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"databases\":${JSON_LIST}}"
         ;;
 
+    status-query-log)
+        STATUS=$(run_sql "SELECT @@slow_query_log;" | tail -n 1)
+        if [ "$STATUS" = "1" ] || [ "$STATUS" = "ON" ]; then
+            echo "{\"status\":\"success\",\"enabled\":true}"
+        else
+            echo "{\"status\":\"success\",\"enabled\":false}"
+        fi
+        ;;
+
+    enable-query-log)
+        run_sql "SET GLOBAL long_query_time = 0; SET GLOBAL slow_query_log = 1;"
+        echo "{\"status\":\"success\",\"message\":\"Captura de consultas SQL activada en MariaDB\"}"
+        ;;
+
+    disable-query-log)
+        run_sql "SET GLOBAL slow_query_log = 0;"
+        echo "{\"status\":\"success\",\"message\":\"Captura de consultas SQL desactivada en MariaDB\"}"
+        ;;
+
+    read-slow-log)
+        LINES="${2:-400}"
+        SLOW_FILE=$(run_sql "SELECT @@slow_query_log_file;" 2>/dev/null | tail -n 1)
+        LOG_CONTENT=""
+
+        if [ -n "$SLOW_FILE" ] && [ -f "$SLOW_FILE" ]; then
+            LOG_CONTENT=$(tail -n "$LINES" "$SLOW_FILE" 2>/dev/null)
+        elif [ -n "$SLOW_FILE" ] && [ -f "/var/lib/mysql/$SLOW_FILE" ]; then
+            LOG_CONTENT=$(tail -n "$LINES" "/var/lib/mysql/$SLOW_FILE" 2>/dev/null)
+        else
+            for f in /var/lib/mysql/*slow*.log /var/log/mysql/*slow*.log; do
+                if [ -f "$f" ]; then
+                    LOG_CONTENT=$(tail -n "$LINES" "$f" 2>/dev/null)
+                    break
+                fi
+            done
+        fi
+
+        RAW_B64=$(echo -n "$LOG_CONTENT" | base64 -w 0 2>/dev/null || echo -n "$LOG_CONTENT" | base64)
+        echo "{\"status\":\"success\",\"raw_base64\":\"$RAW_B64\"}"
+        ;;
+
+    clear-queries)
+        SLOW_FILE=$(run_sql "SELECT @@slow_query_log_file;" 2>/dev/null | tail -n 1)
+        if [ -n "$SLOW_FILE" ] && [ -f "$SLOW_FILE" ]; then
+            > "$SLOW_FILE"
+        fi
+        if [ -n "$SLOW_FILE" ] && [ -f "/var/lib/mysql/$SLOW_FILE" ]; then
+            > "/var/lib/mysql/$SLOW_FILE"
+        fi
+        for f in /var/lib/mysql/*slow*.log /var/log/mysql/*slow*.log; do
+            [ -f "$f" ] && > "$f"
+        done
+        echo "{\"status\":\"success\",\"message\":\"Registro de consultas SQL limpiado exitosamente\"}"
+        ;;
+
     *)
         usage
         ;;

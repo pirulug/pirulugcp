@@ -203,66 +203,346 @@ class WebController {
                 "DB_PASSWORD=\n";
     }
 
-    // Lectura de Logs de Nginx / Apache para el dominio
-    $logData = Engine::execute("pirulu-log", ["view", "/var/log/nginx/" . $domainName . "_access.log", "80"]);
-    $accessLogs = !empty($logData["raw_base64"]) ? base64_decode($logData["raw_base64"]) : "";
-
-    $errLogData = Engine::execute("pirulu-log", ["view", "/var/log/nginx/" . $domainName . "_error.log", "80"]);
-    $errorLogs = !empty($errLogData["raw_base64"]) ? base64_decode($errLogData["raw_base64"]) : "";
-
-    // Motor de calculo de metricas funcionales segun el periodo
-    $periodMultiplier = 1.0;
-    if ($period === "15m") {
-      $periodMultiplier = 0.25;
-    } elseif ($period === "24h") {
-      $periodMultiplier = 24.0;
-    } elseif ($period === "7d") {
-      $periodMultiplier = 168.0;
+    // Lectura de Logs de Nginx reales y exclusivos para este dominio
+    $logPath = "/var/log/nginx/" . $domainName . "_access.log";
+    $accessLogs = "";
+    $accessLines = [];
+    if (file_exists($logPath)) {
+      $accessLogs = (string)file_get_contents($logPath);
+      $accessLines = array_filter(explode("\n", trim($accessLogs)));
     }
 
-    $totalReqCount = 0;
-    $realErrorCount = 0;
-    if (!empty($accessLogs)) {
-      $lines = explode("\n", trim($accessLogs));
-      foreach ($lines as $line) {
-        if (empty($line)) continue;
-        if (preg_match('/"([A-Z]+)\s+([^\s]+)\s+HTTP\/[0-9.]+"\s+(\d{3})\s+(\d+)/', $line, $m)) {
-          $totalReqCount++;
-          $st = (int)$m[3];
-          if ($st >= 400) {
-            $realErrorCount++;
+    $errLogPath = "/var/log/nginx/" . $domainName . "_error.log";
+    $errorLogs = "";
+    if (file_exists($errLogPath)) {
+      $errorLogs = (string)file_get_contents($errLogPath);
+    }
+
+    // Calculo de periodo de corte
+    $now = time();
+    $cutoff = 0;
+    if ($period === "15m") {
+      $cutoff = $now - (15 * 60);
+    } elseif ($period === "1h") {
+      $cutoff = $now - 3600;
+    } elseif ($period === "24h") {
+      $cutoff = $now - 86400;
+    } elseif ($period === "7d") {
+      $cutoff = $now - (7 * 86400);
+    }
+
+    $requestsList = [];
+    $uniqueIps = [];
+    $totalBytes = 0;
+    $statusCounts = [
+      "2xx" => 0,
+      "3xx" => 0,
+      "4xx" => 0,
+      "5xx" => 0
+    ];
+    $routesMap = [];
+
+    // Parsear lineas reales del log de acceso exclusivo de este dominio
+    foreach ($accessLines as $line) {
+      if (preg_match('/^(\S+)\s+-\s+\S+\s+\[([^\]]+)\]\s+"([A-Z]+)\s+([^"\s]+)[^"]*"\s+(\d{3})\s+(\d+)/', $line, $m)) {
+        $ip = $m[1];
+        $dateStr = $m[2];
+        $method = $m[3];
+        $uri = explode("?", $m[4])[0];
+        $status = (int)$m[5];
+        $bytes = (int)$m[6];
+
+        $ts = strtotime(str_replace("/", " ", preg_replace('/:[0-9]{2}:[0-9]{2}:[0-9]{2}/', ' \0', $dateStr, 1)));
+        if (!$ts) {
+          $ts = $now;
+        }
+
+        if ($cutoff > 0 && $ts < $cutoff && count($accessLines) > 50) {
+          continue;
+        }
+
+        $uniqueIps[$ip] = true;
+        $totalBytes += $bytes;
+
+        if ($status >= 200 && $status < 300) {
+          $statusCounts["2xx"]++;
+        } elseif ($status >= 300 && $status < 400) {
+          $statusCounts["3xx"]++;
+        } elseif ($status >= 400 && $status < 500) {
+          $statusCounts["4xx"]++;
+        } elseif ($status >= 500) {
+          $statusCounts["5xx"]++;
+        }
+
+        if (!isset($routesMap[$uri])) {
+          $routesMap[$uri] = [
+            "method"      => $method,
+            "route"       => $uri,
+            "count"       => 0,
+            "last_status" => $status,
+            "bytes"       => 0
+          ];
+        }
+        $routesMap[$uri]["count"]++;
+        $routesMap[$uri]["bytes"] += $bytes;
+
+        $requestsList[] = [
+          "ip"        => $ip,
+          "date"      => $dateStr,
+          "method"    => $method,
+          "uri"       => $uri,
+          "status"    => $status,
+          "bytes"     => $bytes,
+          "bytes_fmt" => ($bytes > 1048576) ? round($bytes / 1048576, 2) . " MB" : (($bytes > 1024) ? round($bytes / 1024, 1) . " KB" : $bytes . " B")
+        ];
+      }
+    }
+
+    $totalReq = count($requestsList);
+    $errorsCount = $statusCounts["4xx"] + $statusCounts["5xx"];
+    $errorRate = ($totalReq > 0) ? round(($errorsCount / $totalReq) * 100, 1) : 0.0;
+    $bandwidthFmt = ($totalBytes > 1073741824) ? round($totalBytes / 1073741824, 2) . " GB" : (($totalBytes > 1048576) ? round($totalBytes / 1048576, 2) . " MB" : round($totalBytes / 1024, 1) . " KB");
+
+    // Ordenar rutas por volumen de peticiones
+    uasort($routesMap, function($a, $b) {
+      return $b["count"] <=> $a["count"];
+    });
+    $topRoutes = array_slice($routesMap, 0, 10);
+
+    // Calcular porcentajes de rutas
+    foreach ($topRoutes as &$tr) {
+      $tr["pct"] = ($totalReq > 0) ? round(($tr["count"] / $totalReq) * 100, 1) : 0;
+      $tr["bytes_fmt"] = ($tr["bytes"] > 1048576) ? round($tr["bytes"] / 1048576, 2) . " MB" : (($tr["bytes"] > 1024) ? round($tr["bytes"] / 1024, 1) . " KB" : $tr["bytes"] . " B");
+    }
+    unset($tr);
+
+    $recentRequests = array_slice(array_reverse($requestsList), 0, 30);
+
+    // Espacio en disco real y exclusivo del dominio
+    $diskSize = "0 KB";
+    $duOut = @shell_exec("du -sh " . escapeshellarg($webRoot) . " 2>/dev/null");
+    if ($duOut && preg_match('/^([^\s]+)/', trim($duOut), $dm)) {
+      $diskSize = $dm[1];
+    }
+
+    $metrics = [
+      "total_requests"   => $totalReq,
+      "unique_visitors"  => count($uniqueIps),
+      "bandwidth"        => $bandwidthFmt,
+      "error_rate"       => $errorRate,
+      "errors_count"     => $errorsCount,
+      "disk_size"        => $diskSize,
+      "status_counts"    => $statusCounts,
+      "status_pct"       => [
+        "2xx" => ($totalReq > 0) ? round(($statusCounts["2xx"] / $totalReq) * 100, 1) : 0,
+        "3xx" => ($totalReq > 0) ? round(($statusCounts["3xx"] / $totalReq) * 100, 1) : 0,
+        "4xx" => ($totalReq > 0) ? round(($statusCounts["4xx"] / $totalReq) * 100, 1) : 0,
+        "5xx" => ($totalReq > 0) ? round(($statusCounts["5xx"] / $totalReq) * 100, 1) : 0
+      ],
+      "top_routes"       => $topRoutes,
+      "recent_requests"  => $recentRequests
+    ];
+
+    // -------------------------------------------------------------------------
+    // SECCION: DEPURACION Y CAPTURA DE CONSULTAS SQL EXCLUSIVAS DE ESTE DOMINIO
+    // -------------------------------------------------------------------------
+    $isSqlCaptureActive = false;
+    try {
+      $sqlCheck = Engine::execute("pirulu-db", ["status-query-log"]);
+      $isSqlCaptureActive = !empty($sqlCheck["enabled"]);
+    } catch (\Exception $e) {
+      $isSqlCaptureActive = false;
+    }
+
+    // Detectar bases de datos y usuarios configurados exclusivamente para este dominio
+    $domainDbs = [];
+
+    // A. Buscar en wp-config.php o config.php del dominio
+    $searchFiles = [
+      $webRoot . "/wp-config.php",
+      $docRoot . "/wp-config.php",
+      $webRoot . "/config.php",
+      $docRoot . "/config.php",
+      $webRoot . "/config.inc.php",
+      $docRoot . "/config.inc.php"
+    ];
+    foreach ($searchFiles as $cfgFile) {
+      if (file_exists($cfgFile)) {
+        $cfgContent = (string)@file_get_contents($cfgFile);
+        if (preg_match('/(?:DB_NAME|DATABASE_NAME|DB_DATABASE)[\'"]?\s*(?:=|,)\s*[\'"]([^\'"]+)[\'"]/i', $cfgContent, $dbm)) {
+          $domainDbs[] = trim($dbm[1]);
+        }
+        if (preg_match('/(?:DB_USER|DATABASE_USER|DB_USERNAME)[\'"]?\s*(?:=|,)\s*[\'"]([^\'"]+)[\'"]/i', $cfgContent, $dbu)) {
+          $domainDbs[] = trim($dbu[1]);
+        }
+      }
+    }
+
+    // B. Buscar en .env del dominio
+    foreach ([$webRoot . "/.env", $docRoot . "/.env"] as $envFile) {
+      if (file_exists($envFile)) {
+        $envContent = (string)@file_get_contents($envFile);
+        if (preg_match('/DB_DATABASE=([^\s\r\n]+)/i', $envContent, $dbm)) {
+          $domainDbs[] = trim($dbm[1], "\"'");
+        }
+        if (preg_match('/DB_USERNAME=([^\s\r\n]+)/i', $envContent, $dbu)) {
+          $domainDbs[] = trim($dbu[1], "\"'");
+        }
+      }
+    }
+
+    // C. Buscar bases de datos creadas en el panel con nombre relacionado al dominio
+    $domainClean = str_replace(["-", "."], "_", explode(".", $domainName)[0]);
+    $stmt = $db->prepare("SELECT db_name, db_user FROM databases WHERE user_id = ?");
+    $stmt->execute([(int)($domain["user_id"] ?? 1)]);
+    $allUserDbs = $stmt->fetchAll();
+    foreach ($allUserDbs as $udb) {
+      if (stripos($udb["db_name"], $domainClean) !== false || count($allUserDbs) === 1) {
+        $domainDbs[] = $udb["db_name"];
+        $domainDbs[] = $udb["db_user"];
+      }
+    }
+
+    $domainDbs = array_values(array_unique(array_filter($domainDbs)));
+
+    // Lectura del log de consultas de MariaDB a traves de Engine
+    $rawSlowLog = "";
+    $slowData = Engine::execute("pirulu-db", ["read-slow-log", "500"]);
+    if (!empty($slowData["raw_base64"])) {
+      $rawSlowLog = (string)base64_decode($slowData["raw_base64"]);
+    }
+
+    $parsedDbQueries = [];
+    if (!empty($rawSlowLog) && !empty($domainDbs)) {
+      $blocks = preg_split('/(?=# User@Host:)/', $rawSlowLog);
+      foreach ($blocks as $b) {
+        if (empty(trim($b))) continue;
+
+        $schema = "";
+        $timeMs = "0.00 ms";
+        $timestamp = time();
+        $sqlLines = [];
+
+        if (preg_match('/Schema:\s*([^\s]+)/', $b, $sm)) {
+          $schema = $sm[1];
+        }
+        if (preg_match('/Query_time:\s*([\d\.]+)/', $b, $qtm)) {
+          $timeMs = round(((float)$qtm[1]) * 1000, 2) . " ms";
+        }
+        if (preg_match('/SET timestamp=(\d+);/', $b, $tsm)) {
+          $timestamp = (int)$tsm[1];
+        }
+
+        $lines = explode("\n", $b);
+        foreach ($lines as $ln) {
+          $lnTrim = trim($ln);
+          if (empty($lnTrim) || str_starts_with($lnTrim, "#") || str_starts_with($lnTrim, "SET timestamp=") || str_starts_with($lnTrim, "use ")) {
+            continue;
+          }
+          $sqlLines[] = $lnTrim;
+        }
+
+        if (!empty($sqlLines)) {
+          $fullSql = implode(" ", $sqlLines);
+          $isMatch = false;
+
+          // 1. Coincidencia por esquema DB exacto
+          if (!empty($schema) && in_array($schema, $domainDbs, true)) {
+            $isMatch = true;
+          }
+
+          // 2. Coincidencia por usuario DB del dominio
+          if (!$isMatch) {
+            foreach ($domainDbs as $dbId) {
+              if (preg_match('/User@Host:\s*' . preg_quote($dbId, '/') . '\[/', $b)) {
+                $isMatch = true;
+                break;
+              }
+            }
+          }
+
+          // 3. Coincidencia por sentencia SQL referenciando la DB del dominio
+          if (!$isMatch) {
+            foreach ($domainDbs as $dbId) {
+              if (stripos($fullSql, "`" . $dbId . "`") !== false || stripos($fullSql, " " . $dbId . ".") !== false) {
+                $isMatch = true;
+                break;
+              }
+            }
+          }
+
+          if ($isMatch) {
+            $parsedDbQueries[] = [
+              "sql"       => $fullSql,
+              "time_ms"   => $timeMs,
+              "timestamp" => $timestamp,
+              "time_fmt"  => date("h:i:s a", $timestamp),
+              "schema"    => !empty($schema) ? $schema : ($domainDbs[0] ?? "")
+            ];
           }
         }
       }
     }
 
-    $calcReq = ($totalReqCount > 0) ? (int)($totalReqCount * $periodMultiplier) : (int)(1846 * $periodMultiplier);
-    $calcErr = ($totalReqCount > 0) ? (int)($realErrorCount * $periodMultiplier) : (int)(38 * $periodMultiplier);
-    $errorRate = ($calcReq > 0) ? round(($calcErr / $calcReq) * 100, 1) : 2.1;
+    // Calcular duplicados para deteccion de N+1
+    $sqlCounts = [];
+    foreach ($parsedDbQueries as $pq) {
+      $normalizedSql = preg_replace('/\'[^\']*\'|\b\d+\b/', '?', $pq["sql"]);
+      $sqlCounts[$normalizedSql] = ($sqlCounts[$normalizedSql] ?? 0) + 1;
+    }
 
-    $metrics = [
-      "p50"            => 72,
-      "p95"            => 240,
-      "requests"       => number_format($calcReq),
-      "raw_requests"   => $calcReq,
-      "error_rate"     => $errorRate,
-      "errors_count"   => $calcErr,
-      "cold_starts"    => 3,
-      "slowest_routes" => [
-        ["method" => "POST", "route" => "/checkout",   "p95" => "512 ms", "latency_ms" => 512, "pct" => 100, "color" => "danger"],
-        ["method" => "GET",  "route" => "/dashboard",  "p95" => "260 ms", "latency_ms" => 260, "pct" => 52,  "color" => "warning"],
-        ["method" => "GET",  "route" => "/orders/:id", "p95" => "233 ms", "latency_ms" => 233, "pct" => 46,  "color" => "warning"],
-        ["method" => "GET",  "route" => "/cart",       "p95" => "176 ms", "latency_ms" => 176, "pct" => 35,  "color" => "warning"],
-        ["method" => "GET",  "route" => "/",           "p95" => "138 ms", "latency_ms" => 138, "pct" => 27,  "color" => "warning"]
+    $realQueriesTraces = [];
+    $recentDbQueries = array_slice(array_reverse($parsedDbQueries), 0, 40);
+    if (!empty($recentDbQueries)) {
+      $hasNplus = false;
+      $stmtList = [];
+      foreach ($recentDbQueries as $rq) {
+        $normalizedSql = preg_replace('/\'[^\']*\'|\b\d+\b/', '?', $rq["sql"]);
+        $cnt = $sqlCounts[$normalizedSql] ?? 1;
+        if ($cnt > 1) {
+          $hasNplus = true;
+        }
+        $stmtList[] = [
+          "sql"     => $rq["sql"],
+          "time_ms" => $rq["time_ms"],
+          "count"   => $cnt,
+          "schema"  => $rq["schema"]
+        ];
+      }
+
+      $realQueriesTraces[] = [
+        "method"     => "DB",
+        "route"      => "MariaDB (" . (!empty($domainDbs[0]) ? $domainDbs[0] : $domainName) . ")",
+        "time"       => $recentDbQueries[0]["time_fmt"] ?? date("h:i:s a"),
+        "count"      => count($stmtList),
+        "total_ms"   => count($stmtList) . " consultas capturadas",
+        "has_nplus"  => $hasNplus,
+        "statements" => $stmtList
+      ];
+    }
+
+    // Telemetria personalizada de consultas si existe
+    $debugFile = $webRoot . "/storage/pirulugcp_debug.json";
+    $hasDebugFile = file_exists($debugFile);
+    $customDebug = [];
+    if ($hasDebugFile) {
+      $content = file_get_contents($debugFile);
+      $customDebug = json_decode($content, true) ?? [];
+    }
+
+    $finalQueries = !empty($realQueriesTraces) ? $realQueriesTraces : ($customDebug["queries"] ?? []);
+    $totalQueryCount = 0;
+    foreach ($finalQueries as $fq) {
+      $totalQueryCount += count($fq["statements"] ?? []);
+    }
+
+    $debugData = [
+      "has_data"              => !empty($finalQueries),
+      "is_sql_capture_active" => $isSqlCaptureActive,
+      "counts"                => [
+        "queries" => $totalQueryCount
       ],
-      "routes_table" => [
-        ["method" => "GET",  "route" => "/",           "p50" => "78 ms",  "p95" => "150 ms", "pct" => 30, "color" => "warning", "requests" => number_format((int)(1846 * $periodMultiplier))],
-        ["method" => "POST", "route" => "/checkout",   "p50" => "190 ms", "p95" => "512 ms", "pct" => 95, "color" => "danger",  "requests" => number_format((int)(63 * $periodMultiplier))],
-        ["method" => "GET",  "route" => "/orders/:id", "p50" => "96 ms",  "p95" => "233 ms", "pct" => 48, "color" => "warning", "requests" => number_format((int)(214 * $periodMultiplier))],
-        ["method" => "GET",  "route" => "/dashboard",  "p50" => "120 ms", "p95" => "268 ms", "pct" => 55, "color" => "warning", "requests" => number_format((int)(96 * $periodMultiplier))],
-        ["method" => "GET",  "route" => "/cart",       "p50" => "60 ms",  "p95" => "176 ms", "pct" => 36, "color" => "warning", "requests" => number_format((int)(148 * $periodMultiplier))],
-        ["method" => "GET",  "route" => "/products",   "p50" => "44 ms",  "p95" => "92 ms",  "pct" => 20, "color" => "success", "requests" => number_format((int)(402 * $periodMultiplier))]
-      ]
+      "queries"               => $finalQueries
     ];
 
     $phpData = Engine::execute("pirulu-php", ["versions"]);
@@ -278,6 +558,7 @@ class WebController {
       "activeTab"     => $activeTab,
       "period"        => $period,
       "metrics"       => $metrics,
+      "debugData"     => $debugData,
       "docRoot"       => $docRoot,
       "webRoot"       => $webRoot,
       "rawEnv"        => $rawEnv,
@@ -285,6 +566,48 @@ class WebController {
       "errorLogs"     => $errorLogs,
       "phpVersions"   => $phpVersions
     ]);
+  }
+
+  public function toggleSqlCapture($id) {
+    Auth::requireAuth();
+
+    $sqlCheck = Engine::execute("pirulu-db", ["status-query-log"]);
+    $isActive = !empty($sqlCheck["enabled"]);
+
+    if ($isActive) {
+      Engine::execute("pirulu-db", ["disable-query-log"]);
+      View::setFlash("success", "Captura de consultas SQL desactivada.");
+    } else {
+      Engine::execute("pirulu-db", ["enable-query-log"]);
+      View::setFlash("success", "Captura en vivo de consultas SQL activada en MariaDB.");
+    }
+
+    header("Location: /web/domain/" . (int)$id . "?tab=debug");
+    exit();
+  }
+
+  public function clearDebug($id) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT d.*, u.username FROM domains d LEFT JOIN users u ON d.user_id = u.id WHERE d.id = ?");
+    $stmt->execute([(int)$id]);
+    $domain = $stmt->fetch();
+
+    if ($domain) {
+      $username = $domain["username"] ?? "admin";
+      $domainName = $domain["domain"];
+      $webRoot = "/home/" . $username . "/web/" . $domainName;
+      $debugFile = $webRoot . "/storage/pirulugcp_debug.json";
+      if (file_exists($debugFile)) {
+        @unlink($debugFile);
+      }
+      Engine::execute("pirulu-db", ["clear-queries"]);
+      View::setFlash("success", "Consultas SQL de depuración reiniciadas.");
+    }
+
+    header("Location: /web/domain/" . (int)$id . "?tab=debug");
+    exit();
   }
 
   public function saveEnv($id) {

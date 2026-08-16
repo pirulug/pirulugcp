@@ -8,6 +8,7 @@ $userName = $d["username"] ?? "admin";
 $proto = $sslActive ? "https://" : "http://";
 $m = $metrics ?? [];
 $fLogo = $frameworkLogo ?? "/assets/sitios/php.svg";
+$dbg = $debugData ?? [];
 ?>
 
 <!-- ======================================================================= -->
@@ -109,13 +110,13 @@ $fLogo = $frameworkLogo ?? "/assets/sitios/php.svg";
 </div>
 
 <!-- ======================================================================= -->
-<!-- PESTANA 1: RESUMEN Y METRICAS DE RENDIMIENTO APM                         -->
+<!-- PESTANA 1: RESUMEN Y METRICAS DINAMICAS Y REALES DEL DOMINIO            -->
 <!-- ======================================================================= -->
 <?php if ($active === "summary"): ?>
   <!-- Selector de Periodo de Tiempo -->
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-      <span class="text-uppercase fw-bold small text-muted tracking-wider">Tiempo de Respuesta</span>
+      <span class="text-uppercase fw-bold small text-muted">Métricas de Tráfico y Servidor</span>
     </div>
     <div class="btn-group btn-group-sm">
       <a href="/web/domain/<?= (int)$d["id"] ?>?tab=summary&period=15m" class="btn <?= ($curPeriod === "15m") ? "btn-secondary active fw-bold" : "btn-outline-secondary" ?>">15m</a>
@@ -125,334 +126,302 @@ $fLogo = $frameworkLogo ?? "/assets/sitios/php.svg";
     </div>
   </div>
 
-  <!-- Fila de 4 Tarjetas de Metricas Principales Funcionales -->
+  <!-- Fila de 4 Tarjetas de Metricas Reales -->
   <div class="row g-3 mb-3">
-    <!-- Tarjeta 1: TIPICO (Mediana) -->
-    <div class="col-md-6 col-lg-3">
-      <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
-        <div class="text-uppercase small text-muted fw-bold">Típico</div>
-        <div class="my-2">
-          <span class="fs-1 fw-bold text-body"><?= $m["p50"] ?? "72" ?></span>
-          <span class="text-muted ms-1 fs-5">ms</span>
-        </div>
-        <div class="small text-muted">mediana</div>
-      </div>
-    </div>
-
-    <!-- Tarjeta 2: P95 -->
-    <div class="col-md-6 col-lg-3">
-      <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
-        <div class="text-uppercase small text-muted fw-bold">P95</div>
-        <div class="my-2">
-          <span class="fs-1 fw-bold text-body"><?= $m["p95"] ?? "240" ?></span>
-          <span class="text-muted ms-1 fs-5">ms</span>
-        </div>
-        <div class="small text-muted">cola</div>
-      </div>
-    </div>
-
-    <!-- Tarjeta 3: SOLICITUDES -->
+    <!-- Tarjeta 1: SOLICITUDES TOTALES -->
     <div class="col-md-6 col-lg-3">
       <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
         <div class="text-uppercase small text-muted fw-bold">Solicitudes</div>
         <div class="my-2">
-          <span class="fs-1 fw-bold text-body"><?= $m["requests"] ?? "1,846" ?></span>
+          <span class="fs-1 fw-bold text-body"><?= number_format($m["total_requests"] ?? 0) ?></span>
         </div>
         <div class="small text-muted">en los últimos <?= $curPeriod ?></div>
       </div>
     </div>
 
-    <!-- Tarjeta 4: TASA DE ERRORES -->
+    <!-- Tarjeta 2: TASA DE ERRORES -->
     <div class="col-md-6 col-lg-3">
       <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
         <div class="text-uppercase small text-muted fw-bold">Tasa de Errores</div>
         <div class="my-2">
-          <span class="fs-1 fw-bold text-warning"><?= $m["error_rate"] ?? "2.1" ?></span>
-          <span class="text-warning ms-1 fs-5">%</span>
+          <span class="fs-1 fw-bold <?= (($m["error_rate"] ?? 0) > 0) ? "text-warning" : "text-success" ?>"><?= $m["error_rate"] ?? "0.0" ?></span>
+          <span class="<?= (($m["error_rate"] ?? 0) > 0) ? "text-warning" : "text-success" ?> ms-1 fs-5">%</span>
         </div>
-        <div class="small text-muted"><?= $m["errors_count"] ?? "38" ?> de <?= $m["requests"] ?? "1846" ?> fueron 4xx/5xx</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Nota de Arranques en Frio -->
-  <div class="mb-3">
-    <span class="small text-muted d-inline-flex align-items-center">
-      <i class="bi bi-snow text-info me-2"></i> <?= $m["cold_starts"] ?? "3" ?> arranques en frío excluidos del tiempo
-    </span>
-  </div>
-
-  <!-- Fila de Graficos (Histograma de Latencia y Rendimiento) -->
-  <div class="row g-3 mb-3">
-    <!-- Grafico 1: Distribucion del Tiempo de Respuesta -->
-    <div class="col-lg-6">
-      <div class="p-3 rounded border bg-body h-100">
-        <div class="text-uppercase small text-muted fw-bold mb-3">Tiempo de Respuesta</div>
-        <div class="d-flex align-items-end justify-content-between pt-4 pb-2" style="height: 180px; gap: 8px;">
-          <!-- Barra <25ms -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 18%; background-color: #22c55e;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;25ms</span>
-          </div>
-          <!-- Barra <50ms -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 52%; background-color: #22c55e;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;50ms</span>
-          </div>
-          <!-- Barra <100ms -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 92%; background-color: #10b981;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;100ms</span>
-          </div>
-          <!-- Barra <250ms -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 65%; background-color: #f59e0b;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;250ms</span>
-          </div>
-          <!-- Barra <500ms -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 25%; background-color: #f59e0b;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;500ms</span>
-          </div>
-          <!-- Barra <1s -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 12%; background-color: #ef4444;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&lt;1s</span>
-          </div>
-          <!-- Barra >1s -->
-          <div class="d-flex flex-column align-items-center flex-fill h-100 justify-content-end">
-            <div class="w-100 rounded-top" style="height: 6%; background-color: #ef4444;"></div>
-            <span class="font-monospace text-muted mt-2" style="font-size: 10px;">&gt;1s</span>
-          </div>
-        </div>
+        <div class="small text-muted"><?= $m["errors_count"] ?? 0 ?> errores de <?= $m["total_requests"] ?? 0 ?> peticiones</div>
       </div>
     </div>
 
-    <!-- Grafico 2: Rendimiento / Solicitudes en el tiempo -->
-    <div class="col-lg-6">
+    <!-- Tarjeta 3: TRANSFERENCIA DE DATOS -->
+    <div class="col-md-6 col-lg-3">
       <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="text-uppercase small text-muted fw-bold">Rendimiento</span>
-          <span class="font-monospace small text-muted">sol./min</span>
+        <div class="text-uppercase small text-muted fw-bold">Transferencia</div>
+        <div class="my-2">
+          <span class="fs-1 fw-bold text-body"><?= $m["bandwidth"] ?? "0 KB" ?></span>
         </div>
-        <!-- Grafico SVG de Onda -->
-        <div class="position-relative w-100 my-auto" style="height: 140px;">
-          <svg viewBox="0 0 400 120" class="w-100 h-100" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="chartGradShow" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#ef4444" stop-opacity="0.3"/>
-                <stop offset="100%" stop-color="#ef4444" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <path d="M0,80 Q50,10 100,20 T200,85 T300,20 T400,80 L400,120 L0,120 Z" fill="url(#chartGradShow)" />
-            <path d="M0,80 Q50,10 100,20 T200,85 T300,20 T400,80" fill="none" stroke="#ef4444" stroke-width="2.5" />
-          </svg>
-          <div class="position-absolute top-0 start-0 small font-monospace text-muted" style="font-size: 10px;">22</div>
+        <div class="small text-muted"><?= $m["unique_visitors"] ?? 0 ?> visitantes / IPs únicos</div>
+      </div>
+    </div>
+
+    <!-- Tarjeta 4: ESPACIO EN DISCO -->
+    <div class="col-md-6 col-lg-3">
+      <div class="p-3 rounded border bg-body h-100 d-flex flex-column justify-content-between">
+        <div class="text-uppercase small text-muted fw-bold">Espacio en Disco</div>
+        <div class="my-2">
+          <span class="fs-1 fw-bold text-primary"><?= $m["disk_size"] ?? "0 KB" ?></span>
         </div>
-        <div class="d-flex justify-content-between font-monospace text-muted" style="font-size: 11px;">
-          <span>12:02:00</span>
-          <span>12:25:00</span>
+        <div class="small text-muted font-monospace text-truncate">/home/<?= $userName ?>/web/<?= $domainName ?></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desglose de Codigos HTTP -->
+  <div class="bg-body p-3 rounded mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="text-uppercase small text-muted fw-bold">Distribución de Respuestas HTTP</span>
+      <span class="font-monospace small text-muted">Total: <?= number_format($m["total_requests"] ?? 0) ?></span>
+    </div>
+
+    <div class="row g-3 font-monospace small">
+      <!-- 2xx Exito -->
+      <div class="col-md-3">
+        <div class="p-2 rounded border bg-body-tertiary">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-success fw-bold">2xx Éxito</span>
+            <strong><?= $m["status_counts"]["2xx"] ?? 0 ?> (<?= $m["status_pct"]["2xx"] ?? 0 ?>%)</strong>
+          </div>
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar bg-success" style="width: <?= $m["status_pct"]["2xx"] ?? 0 ?>%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3xx Redirecciones -->
+      <div class="col-md-3">
+        <div class="p-2 rounded border bg-body-tertiary">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-info fw-bold">3xx Redirecciones</span>
+            <strong><?= $m["status_counts"]["3xx"] ?? 0 ?> (<?= $m["status_pct"]["3xx"] ?? 0 ?>%)</strong>
+          </div>
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar bg-info" style="width: <?= $m["status_pct"]["3xx"] ?? 0 ?>%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4xx Errores Cliente -->
+      <div class="col-md-3">
+        <div class="p-2 rounded border bg-body-tertiary">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-warning fw-bold">4xx Cliente</span>
+            <strong><?= $m["status_counts"]["4xx"] ?? 0 ?> (<?= $m["status_pct"]["4xx"] ?? 0 ?>%)</strong>
+          </div>
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar bg-warning" style="width: <?= $m["status_pct"]["4xx"] ?? 0 ?>%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5xx Errores Servidor -->
+      <div class="col-md-3">
+        <div class="p-2 rounded border bg-body-tertiary">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-danger fw-bold">5xx Servidor</span>
+            <strong><?= $m["status_counts"]["5xx"] ?? 0 ?> (<?= $m["status_pct"]["5xx"] ?? 0 ?>%)</strong>
+          </div>
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar bg-danger" style="width: <?= $m["status_pct"]["5xx"] ?? 0 ?>%;"></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Rutas Mas Lentas Funcionales -->
+  <!-- Rutas Mas Solicitadas Reales -->
   <div class="bg-body p-3 rounded mb-3">
-    <div class="text-uppercase small text-muted fw-bold mb-3">Rutas Más Lentas</div>
-    <div class="d-flex flex-column gap-3">
-      <?php foreach (($m["slowest_routes"] ?? []) as $r): ?>
-        <div class="d-flex align-items-center gap-3">
-          <div style="min-width: 140px;" class="d-flex align-items-center gap-2">
-            <span class="badge <?= ($r["method"] === "POST") ? "bg-info-subtle text-info" : "bg-success-subtle text-success" ?> font-monospace small">
-              <?= $r["method"] ?>
-            </span>
-            <span class="font-monospace small fw-bold"><?= $r["route"] ?></span>
+    <div class="text-uppercase small text-muted fw-bold mb-3">Rutas Más Solicitadas</div>
+    <?php if (empty($m["top_routes"])): ?>
+      <div class="text-muted small text-center py-3">No hay solicitudes registradas en este período.</div>
+    <?php else: ?>
+      <div class="d-flex flex-column gap-3">
+        <?php foreach ($m["top_routes"] as $r): ?>
+          <div class="d-flex align-items-center gap-3">
+            <div style="min-width: 160px;" class="d-flex align-items-center gap-2">
+              <span class="badge <?= ($r["method"] === "POST") ? "bg-info-subtle text-info" : "bg-success-subtle text-success" ?> font-monospace small">
+                <?= $r["method"] ?>
+              </span>
+              <span class="font-monospace small fw-bold text-truncate" style="max-width: 220px;" title="<?= $r["route"] ?>">
+                <?= $r["route"] ?>
+              </span>
+            </div>
+            <div class="progress flex-grow-1" style="height: 8px; background-color: rgba(255,255,255,0.05);">
+              <div class="progress-bar bg-primary" role="progressbar" style="width: <?= $r["pct"] ?>%;"></div>
+            </div>
+            <div class="d-flex align-items-center gap-3" style="min-width: 180px; justify-content: flex-end;">
+              <span class="badge bg-secondary-subtle text-secondary font-monospace"><?= $r["bytes_fmt"] ?></span>
+              <span class="font-monospace small fw-bold"><?= $r["count"] ?> peticiones</span>
+              <span class="badge <?= ($r["last_status"] < 400) ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning" ?> font-monospace">
+                <?= $r["last_status"] ?>
+              </span>
+            </div>
           </div>
-          <div class="progress flex-grow-1" style="height: 10px; background-color: rgba(255,255,255,0.05);">
-            <div class="progress-bar bg-<?= $r["color"] ?>" role="progressbar" style="width: <?= $r["pct"] ?>%;"></div>
-          </div>
-          <div class="d-flex align-items-center gap-2" style="min-width: 90px; justify-content: flex-end;">
-            <span class="font-monospace fw-bold text-<?= $r["color"] ?>"><?= $r["p95"] ?></span>
-            <i class="bi bi-database text-muted small"></i>
-          </div>
-        </div>
-      <?php endforeach; ?>
-    </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
   </div>
 
-  <!-- Tabla de Rutas / Solicitudes Recientes -->
+  <!-- Tabla de Solicitudes Recientes en Vivo -->
   <div class="bg-body p-3 rounded mb-3">
-    <div class="d-flex gap-3 mb-3 border-bottom pb-2">
-      <span class="fw-bold text-danger border-bottom border-danger border-2 pb-2">Rutas</span>
-      <span class="text-muted">Solicitudes recientes</span>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="text-uppercase small text-muted fw-bold">Solicitudes Recientes en Vivo</span>
+      <span class="font-monospace small text-muted">Últimas 30 peticiones</span>
     </div>
 
-    <div class="table-responsive">
-      <table class="table table-hover align-middle table-sm m-0">
-        <thead>
-          <tr class="text-muted small text-uppercase">
-            <th class="ps-3">Ruta</th>
-            <th>P50</th>
-            <th>P95</th>
-            <th>Latencia</th>
-            <th class="text-end pe-3">Solicitudes</th>
-          </tr>
-        </thead>
-        <tbody class="font-monospace small">
-          <?php foreach (($m["routes_table"] ?? []) as $rt): ?>
-            <tr>
-              <td class="ps-3">
-                <span class="badge <?= ($rt["method"] === "POST") ? "bg-info-subtle text-info" : "bg-success-subtle text-success" ?> me-2">
-                  <?= $rt["method"] ?>
-                </span>
-                <?= $rt["route"] ?>
-              </td>
-              <td><?= $rt["p50"] ?></td>
-              <td class="text-<?= $rt["color"] ?> fw-bold"><?= $rt["p95"] ?></td>
-              <td>
-                <div class="progress" style="width: 80px; height: 6px;">
-                  <div class="progress-bar bg-<?= $rt["color"] ?>" style="width: <?= $rt["pct"] ?>%;"></div>
-                </div>
-              </td>
-              <td class="text-end pe-3">
-                <?= $rt["requests"] ?> <i class="bi bi-database ms-1 text-muted"></i>
-              </td>
+    <?php if (empty($m["recent_requests"])): ?>
+      <div class="text-muted small text-center py-3">No hay solicitudes recientes en el registro de acceso.</div>
+    <?php else: ?>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle table-sm m-0">
+          <thead>
+            <tr class="text-muted small text-uppercase">
+              <th class="ps-3">Hora</th>
+              <th>IP</th>
+              <th>Método</th>
+              <th>Ruta Solicitada</th>
+              <th>Estado</th>
+              <th class="text-end pe-3">Transferido</th>
             </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody class="font-monospace small">
+            <?php foreach ($m["recent_requests"] as $req): ?>
+              <tr>
+                <td class="ps-3 text-muted"><?= $req["date"] ?></td>
+                <td><?= $req["ip"] ?></td>
+                <td>
+                  <span class="badge <?= ($req["method"] === "POST") ? "bg-info-subtle text-info" : "bg-success-subtle text-success" ?>">
+                    <?= $req["method"] ?>
+                  </span>
+                </td>
+                <td class="fw-bold text-body text-truncate" style="max-width: 320px;"><?= $req["uri"] ?></td>
+                <td>
+                  <span class="badge <?= ($req["status"] < 300) ? "bg-success-subtle text-success" : (($req["status"] < 400) ? "bg-info-subtle text-info" : (($req["status"] < 500) ? "bg-warning-subtle text-warning" : "bg-danger-subtle text-danger")) ?>">
+                    <?= $req["status"] ?>
+                  </span>
+                </td>
+                <td class="text-end pe-3"><?= $req["bytes_fmt"] ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
   </div>
 <?php endif; ?>
 
 <!-- ======================================================================= -->
-<!-- PESTANA 2: DEPURACION (CONSULTAS SQL, N+1 Y LOGS DE APM)               -->
+<!-- PESTANA 2: DEPURACION (CONSULTAS SQL A LA BASE DE DATOS)                -->
 <!-- ======================================================================= -->
 <?php if ($active === "debug"): ?>
   <div class="bg-body p-3 rounded mb-3">
-    <!-- Sub-Filtros de Depuracion -->
-    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Volcados <span class="badge bg-secondary ms-1">1</span></button>
-      <button class="btn btn-sm btn-danger active py-1 px-3 fw-bold">Consultas <span class="badge bg-light text-dark ms-1">14</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Trabajos <span class="badge bg-secondary ms-1">2</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Vistas <span class="badge bg-secondary ms-1">1</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Correo <span class="badge bg-secondary ms-1">1</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Caché <span class="badge bg-secondary ms-1">1</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">Eventos <span class="badge bg-secondary ms-1">1</span></button>
-      <button class="btn btn-sm btn-outline-secondary py-1 px-3">HTTP <span class="badge bg-secondary ms-1">1</span></button>
+    <!-- Encabezado de la Seccion de Consultas SQL -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <div>
+        <h5 class="mb-0 fw-bold d-flex align-items-center">
+          <i class="bi bi-database me-2 text-primary"></i> Consultas SQL a la Base de Datos
+        </h5>
+        <span class="text-muted small">Captura y perfilado en tiempo real de consultas ejecutadas en MariaDB por <strong><?= $domainName ?></strong>.</span>
+      </div>
+
+      <!-- Botonera de Control de Captura -->
+      <div class="d-flex align-items-center gap-2">
+        <a href="/web/domain/<?= (int)$d["id"] ?>/debug/toggle-sql" class="btn btn-sm <?= !empty($dbg["is_sql_capture_active"]) ? "btn-success" : "btn-outline-primary" ?> text-uppercase fw-bold text-nowrap">
+          <i class="bi <?= !empty($dbg["is_sql_capture_active"]) ? "bi-record-circle-fill text-danger" : "bi-play-circle" ?> me-1"></i>
+          <?= !empty($dbg["is_sql_capture_active"]) ? "Captura SQL: Activa" : "Activar Captura SQL" ?>
+        </a>
+        <a href="/web/domain/<?= (int)$d["id"] ?>/debug/clear" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap" onclick="return confirm('¿Reiniciar y limpiar los registros de consultas?')">
+          <i class="bi bi-eraser me-1"></i> Limpiar
+        </a>
+      </div>
     </div>
 
-    <!-- Barra de Busqueda y Opciones -->
+    <!-- Barra de Busqueda y Contador -->
     <div class="row g-2 align-items-center mb-3">
       <div class="col-md-6">
         <div class="input-group input-group-sm">
           <span class="input-group-text bg-transparent"><i class="bi bi-search"></i></span>
-          <input type="text" id="debugQuerySearch" class="form-control" placeholder="Buscar SQL, ruta o archivo..." onkeyup="filterQueries()">
+          <input type="text" id="debugQuerySearch" class="form-control" placeholder="Buscar sentencia SQL, tabla o ID..." onkeyup="filterDebugTraces()">
         </div>
       </div>
-      <div class="col-md-4 d-flex align-items-center gap-3">
-        <div class="form-check form-check-inline m-0 small text-muted">
-          <input class="form-check-input" type="checkbox" id="chkWorkers">
-          <label class="form-check-label" for="chkWorkers">Mostrar consultas de workers</label>
-        </div>
-        <div class="form-check form-check-inline m-0 small text-muted">
-          <input class="form-check-input" type="checkbox" id="chkTests">
-          <label class="form-check-label" for="chkTests">Mostrar ejecuciones de tests</label>
-        </div>
-      </div>
-      <div class="col-md-2 text-end">
-        <button type="button" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold" onclick="alert('Registro de depuración reiniciado')">
-          <i class="bi bi-eraser me-1"></i> Limpiar
-        </button>
+      <div class="col-md-6 text-end">
+        <span class="badge bg-secondary-subtle text-secondary font-monospace px-3 py-2">
+          <i class="bi bi-hdd-network me-1"></i> <?= $dbg["counts"]["queries"] ?? 0 ?> <?= (($dbg["counts"]["queries"] ?? 0) === 1) ? "consulta capturada" : "consultas capturadas" ?>
+        </span>
       </div>
     </div>
 
-    <!-- Lista de Trazas y Consultas SQL -->
-    <div class="d-flex flex-column gap-3" id="debugTracesList">
-      <!-- Trace 1: GET /products -->
-      <div class="p-3 rounded border bg-body-tertiary query-item">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="mb-0 fw-bold font-monospace">GET /products</h6>
-          <span class="font-monospace text-muted small">12:12:16 p. m. · 1 consultas · 5.30 ms</span>
-        </div>
-        <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #79c0ff;">
-          <span>select * from `products` order by `created_at` desc limit 24 offset 0</span>
-          <div class="d-flex align-items-center gap-2">
-            <span class="text-muted small">5.30 ms</span>
-            <button class="btn btn-sm btn-link text-muted p-0" onclick="navigator.clipboard.writeText('select * from `products` order by `created_at` desc limit 24 offset 0'); alert('Copiado');" title="Copiar consulta">
-              <i class="bi bi-clipboard"></i>
-            </button>
+    <?php if (empty($dbg["queries"])): ?>
+      <!-- Estado Limpio cuando no hay consultas capturadas -->
+      <div class="p-4 rounded border text-center my-3 bg-body-tertiary">
+        <i class="bi bi-database-check fs-1 text-primary mb-2 d-block"></i>
+        <h5 class="fw-bold">No hay consultas SQL registradas</h5>
+        <p class="text-muted small mb-3" style="max-width: 600px; margin: 0 auto;">
+          Activa la captura en vivo para perfilar todas las consultas que <strong><?= $domainName ?></strong> ejecuta en MariaDB con tiempos en milisegundos y detección de consultas N+1.
+        </p>
+        <?php if (empty($dbg["is_sql_capture_active"])): ?>
+          <div class="d-flex justify-content-center gap-2">
+            <a href="/web/domain/<?= (int)$d["id"] ?>/debug/toggle-sql" class="btn btn-primary px-4 text-uppercase fw-bold">
+              <i class="bi bi-play-circle me-1"></i> Activar Captura SQL en Vivo
+            </a>
           </div>
-        </div>
+        <?php else: ?>
+          <span class="badge bg-success-subtle text-success px-3 py-2 font-monospace">
+            <i class="bi bi-record-circle-fill text-danger me-1"></i> Captura activa esperando peticiones de <?= $domainName ?>...
+          </span>
+        <?php endif; ?>
       </div>
-
-      <!-- Trace 2: GET / -->
-      <div class="p-3 rounded border bg-body-tertiary query-item">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="mb-0 fw-bold font-monospace">GET /</h6>
-          <span class="font-monospace text-muted small">12:12:15 p. m. · 2 consultas · 5.30 ms</span>
-        </div>
-        <div class="d-flex flex-column gap-2">
-          <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #79c0ff;">
-            <span>select * from `categories` order by `sort` asc</span>
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">0.70 ms</span>
-              <button class="btn btn-sm btn-link text-muted p-0" onclick="navigator.clipboard.writeText('select * from `categories` order by `sort` asc'); alert('Copiado');"><i class="bi bi-clipboard"></i></button>
+    <?php else: ?>
+      <!-- Lista de Consultas SQL Capturadas -->
+      <div class="d-flex flex-column gap-3" id="debugTracesList">
+        <?php foreach ($dbg["queries"] as $qTrace): ?>
+          <div class="p-3 rounded border bg-body-tertiary debug-trace-item">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="d-flex align-items-center gap-2">
+                <h6 class="mb-0 fw-bold font-monospace"><?= $qTrace["route"] ?? "MariaDB" ?></h6>
+                <?php if (!empty($qTrace["has_nplus"])): ?>
+                  <span class="badge bg-warning text-dark font-monospace fw-bold px-2 py-0">N+1</span>
+                <?php endif; ?>
+              </div>
+              <span class="font-monospace text-muted small"><?= $qTrace["time"] ?? "" ?> · <?= $qTrace["count"] ?? 1 ?> <?= (($qTrace["count"] ?? 1) === 1) ? "consulta" : "consultas" ?></span>
+            </div>
+            <div class="d-flex flex-column gap-2">
+              <?php foreach (($qTrace["statements"] ?? []) as $st): ?>
+                <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center query-stmt-row" 
+                     style="background-color: #0b0f19; color: <?= (($st["count"] ?? 1) > 1) ? "#ffab70" : "#79c0ff" ?>; <?= (($st["count"] ?? 1) > 1) ? "border-color: rgba(239,68,68,0.3) !important;" : "" ?>">
+                  <span class="query-sql-text"><?= $st["sql"] ?></span>
+                  <div class="d-flex align-items-center gap-2 text-nowrap ms-3">
+                    <?php if (!empty($st["schema"])): ?>
+                      <span class="badge bg-secondary-subtle text-secondary font-monospace"><?= $st["schema"] ?></span>
+                    <?php endif; ?>
+                    <?php if (($st["count"] ?? 1) > 1): ?>
+                      <span class="badge bg-danger-subtle text-danger font-monospace px-1">x<?= $st["count"] ?></span>
+                    <?php endif; ?>
+                    <span class="text-muted small"><?= $st["time_ms"] ?? "" ?></span>
+                    <button type="button" class="btn btn-sm btn-link text-muted p-0" onclick="copySqlStatement(this)" title="Copiar consulta SQL">
+                      <i class="bi bi-clipboard"></i>
+                    </button>
+                  </div>
+                </div>
+              <?php endforeach; ?>
             </div>
           </div>
-          <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #79c0ff;">
-            <span>select * from `products` where `featured` = ? limit 12</span>
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">4.60 ms</span>
-              <button class="btn btn-sm btn-link text-muted p-0" onclick="navigator.clipboard.writeText('select * from `products` where `featured` = ? limit 12'); alert('Copiado');"><i class="bi bi-clipboard"></i></button>
-            </div>
-          </div>
-        </div>
+        <?php endforeach; ?>
       </div>
-
-      <!-- Trace 3: GET /dashboard (N+1 Alert) -->
-      <div class="p-3 rounded border bg-body-tertiary query-item">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="d-flex align-items-center gap-2">
-            <h6 class="mb-0 fw-bold font-monospace">GET /dashboard</h6>
-            <span class="badge bg-warning text-dark font-monospace fw-bold px-2 py-0">N+1</span>
-          </div>
-          <span class="font-monospace text-muted small">12:12:15 p. m. · 6 consultas · 13.3 ms</span>
-        </div>
-        <div class="d-flex flex-column gap-2">
-          <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #79c0ff;">
-            <span>select * from `users` where `team_id` = ?</span>
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">1.80 ms</span>
-              <button class="btn btn-sm btn-link text-muted p-0"><i class="bi bi-clipboard"></i></button>
-            </div>
-          </div>
-          <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #ffab70; border-color: rgba(239,68,68,0.3) !important;">
-            <span>select count(*) from `orders` where `user_id` = ?</span>
-            <div class="d-flex align-items-center gap-2">
-              <span class="badge bg-danger-subtle text-danger font-monospace px-1">x5</span>
-              <span class="text-muted small">2.50 ms</span>
-              <button class="btn btn-sm btn-link text-muted p-0"><i class="bi bi-clipboard"></i></button>
-            </div>
-          </div>
-          <div class="p-2 rounded border font-monospace small d-flex justify-content-between align-items-center" style="background-color: #0b0f19; color: #ffab70; border-color: rgba(239,68,68,0.3) !important;">
-            <span>select count(*) from `orders` where `user_id` = ?</span>
-            <div class="d-flex align-items-center gap-2">
-              <span class="badge bg-danger-subtle text-danger font-monospace px-1">x5</span>
-              <span class="text-muted small">2.40 ms</span>
-              <button class="btn btn-sm btn-link text-muted p-0"><i class="bi bi-clipboard"></i></button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <?php endif; ?>
   </div>
 
   <script>
-  function filterQueries() {
+  function filterDebugTraces() {
     const q = document.getElementById("debugQuerySearch").value.toLowerCase();
-    const items = document.querySelectorAll(".query-item");
+    const items = document.querySelectorAll(".debug-trace-item");
     items.forEach(el => {
       if (el.textContent.toLowerCase().includes(q)) {
         el.style.display = "";
@@ -460,6 +429,20 @@ $fLogo = $frameworkLogo ?? "/assets/sitios/php.svg";
         el.style.display = "none";
       }
     });
+  }
+
+  function copySqlStatement(btn) {
+    const container = btn.closest(".query-stmt-row");
+    if (container) {
+      const txt = container.querySelector(".query-sql-text").textContent.trim();
+      navigator.clipboard.writeText(txt).then(() => {
+        const icon = btn.querySelector("i");
+        icon.className = "bi bi-check2 text-success";
+        setTimeout(() => {
+          icon.className = "bi bi-clipboard";
+        }, 1500);
+      });
+    }
   }
   </script>
 <?php endif; ?>
@@ -491,7 +474,7 @@ $fLogo = $frameworkLogo ?? "/assets/sitios/php.svg";
 
     <pre id="domainLogView" 
          class="p-3 rounded font-monospace small mb-0" 
-         style="background-color: #0b0f19; color: #4ade80; min-height: 400px; max-height: 540px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; border: 1px solid rgba(255,255,255,0.08);"><?= !empty($accessLogs) ? $accessLogs : (!empty($errorLogs) ? $errorLogs : "[127.0.0.1 - - [" . date("d/M/Y:H:i:s O") . "] \"GET / HTTP/1.1\" 200 4520 \"-\" \"Mozilla/5.0\"]\n[127.0.0.1 - - [" . date("d/M/Y:H:i:s O") . "] \"GET /products HTTP/1.1\" 200 1840 \"-\" \"Mozilla/5.0\"]") ?></pre>
+         style="background-color: #0b0f19; color: #4ade80; min-height: 400px; max-height: 540px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; border: 1px solid rgba(255,255,255,0.08);"><?= !empty($accessLogs) ? $accessLogs : (!empty($errorLogs) ? $errorLogs : "[Sin registros de acceso en /var/log/nginx/" . $domainName . "_access.log]") ?></pre>
   </div>
 <?php endif; ?>
 

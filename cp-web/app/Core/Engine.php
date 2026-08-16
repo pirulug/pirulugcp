@@ -99,6 +99,63 @@ class Engine {
       ];
     }
 
+    if ($binary === "pirulu-db") {
+      if ($action === "status-query-log") {
+        return [
+          "status"  => "success",
+          "enabled" => false
+        ];
+      }
+      if ($action === "read-slow-log") {
+        return [
+          "status"     => "success",
+          "raw_base64" => base64_encode("# User@Host: admin_wpdb[admin_wpdb] @ localhost []\n# Thread_id: 10 Schema: admin_wpdb\n# Query_time: 0.000450 Lock_time: 0.000050 Rows_sent: 1 Rows_examined: 1\nSET timestamp=" . time() . ";\nSELECT * FROM usuarios ORDER BY id DESC;")
+        ];
+      }
+      if ($action === "enable-query-log" || $action === "disable-query-log") {
+        return [
+          "status"  => "success",
+          "message" => "Estado de captura de consultas SQL actualizado en MariaDB"
+        ];
+      }
+      if ($action === "clear-queries") {
+        return [
+          "status"  => "success",
+          "message" => "Registro de consultas SQL limpiado exitosamente"
+        ];
+      }
+      if ($action === "dump") {
+        return [
+          "status" => "success",
+          "file"   => "/var/backups/pirulugcp/databases/" . ($args[1] ?? "db") . ".sql",
+          "size"   => 204850
+        ];
+      }
+      if ($action === "logs") {
+        return [
+          "status"     => "success",
+          "raw_base64" => base64_encode("MariaDB 10.11.8 Server ready for connections.\nVersion: '10.11.8-MariaDB-0ubuntu0.24.04.1' socket: '/run/mysqld/mysqld.sock' port: 3306")
+        ];
+      }
+      if ($action === "get-config") {
+        return [
+          "status"     => "success",
+          "file"       => "/etc/mysql/mariadb.conf.d/50-server.cnf",
+          "raw_base64" => base64_encode("[mysqld]\nuser = mysql\npid-file = /run/mysqld/mysqld.pid\nbasedir = /usr\ndatadir = /var/lib/mysql\ntmpdir = /tmp\nbind-address = 127.0.0.1\nmax_connections = 150\nslow_query_log = 1\nlong_query_time = 0\n")
+        ];
+      }
+      if ($action === "save-config") {
+        return [
+          "status"  => "success",
+          "message" => "Configuracion de MariaDB guardada y servicio reiniciado exitosamente"
+        ];
+      }
+      return [
+        "status"  => "success",
+        "message" => "Operacion de base de datos ejecutada en modo simulacion"
+      ];
+    }
+
     if ($binary === "pirulu-ftp") {
       if ($action === "status") {
         return [
