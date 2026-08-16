@@ -52,7 +52,7 @@
 
 <div class="bg-body p-3 rounded mb-3">
   <?php if (empty($accounts)): ?>
-    <div class="text-center py-4">
+    <div class="text-center py-3">
       <i class="bi bi-inbox text-muted fs-1 mb-2 d-block"></i>
       <h6 class="text-muted">No hay cuentas de correo creadas en este dominio</h6>
       <p class="small text-muted mb-3">Crea tu primera cuenta de correo para comenzar a enviar y recibir mensajes.</p>
@@ -99,7 +99,7 @@
                   <a href="http://webmail.<?= $domain["domain_name"] ?>" target="_blank" class="btn btn-sm btn-outline-info text-uppercase fw-bold text-nowrap" title="Entrar a Webmail">
                     <i class="bi bi-box-arrow-up-right me-1"></i> Webmail
                   </a>
-                  <button type="button" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" data-bs-toggle="modal" data-bs-target="#changePassModal" data-id="<?= $acc["id"] ?>" data-email="<?= $acc["account_email"] ?>" onclick="document.getElementById('change_pass_account_id').value = '<?= $acc["id"] ?>'; document.getElementById('change_pass_email_label').textContent = '<?= $acc["account_email"] ?>';">
+                  <button type="button" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" data-bs-toggle="modal" data-bs-target="#changePassModal" onclick="document.getElementById('change_pass_account_id').value = '<?= $acc["id"] ?>'; document.getElementById('change_pass_email_label').textContent = '<?= $acc["account_email"] ?>';">
                     <i class="bi bi-key me-1"></i> Contraseña
                   </button>
                   <button type="button" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap" data-bs-toggle="modal" data-bs-target="#editQuotaModal" onclick="document.getElementById('edit_quota_account_id').value = '<?= $acc["id"] ?>'; document.getElementById('edit_quota_email_label').textContent = '<?= $acc["account_email"] ?>'; document.getElementById('edit_quota_mb').value = '<?= $acc["quota_mb"] ?>';">
@@ -246,7 +246,7 @@
 
 <div class="bg-body p-3 rounded mb-3">
   <?php if (empty($forwarders)): ?>
-    <div class="text-center py-4">
+    <div class="text-center py-3">
       <i class="bi bi-arrow-right-circle text-muted fs-1 mb-2 d-block"></i>
       <h6 class="text-muted">No hay reenvios configurados</h6>
       <p class="small text-muted mb-3">Los reenvios permiten redirigir los mensajes entrantes a una direccion externa (ej. Gmail, Outlook).</p>
@@ -345,48 +345,48 @@ $spfRecord    = $dnsInfo["spf_record"] ?? ("v=spf1 a mx ip4:" . $serverIp . " -a
 $dmarcRecord  = "v=DMARC1; p=quarantine; pct=100";
 
 $dnsRecords = [
-    [
-        "name"     => "mail." . $domainName,
-        "type"     => "A",
-        "priority" => "",
-        "ttl"      => "14400",
-        "value"    => $serverIp
-    ],
-    [
-        "name"     => "webmail." . $domainName,
-        "type"     => "A",
-        "priority" => "",
-        "ttl"      => "14400",
-        "value"    => $serverIp
-    ],
-    [
-        "name"     => $domainName,
-        "type"     => "MX",
-        "priority" => "10",
-        "ttl"      => "14400",
-        "value"    => "mail." . $domainName . "."
-    ],
-    [
-        "name"     => $domainName,
-        "type"     => "TXT",
-        "priority" => "",
-        "ttl"      => "14400",
-        "value"    => $spfRecord
-    ],
-    [
-        "name"     => "_dmarc",
-        "type"     => "TXT",
-        "priority" => "",
-        "ttl"      => "14400",
-        "value"    => $dmarcRecord
-    ],
-    [
-        "name"     => $dkimSelector . "._domainkey",
-        "type"     => "TXT",
-        "priority" => "",
-        "ttl"      => "3600",
-        "value"    => $dkimRecord
-    ]
+  [
+    "name"     => "mail." . $domainName,
+    "type"     => "A",
+    "priority" => "",
+    "ttl"      => "14400",
+    "value"    => $serverIp
+  ],
+  [
+    "name"     => "webmail." . $domainName,
+    "type"     => "A",
+    "priority" => "",
+    "ttl"      => "14400",
+    "value"    => $serverIp
+  ],
+  [
+    "name"     => $domainName,
+    "type"     => "MX",
+    "priority" => "10",
+    "ttl"      => "14400",
+    "value"    => "mail." . $domainName . "."
+  ],
+  [
+    "name"     => $domainName,
+    "type"     => "TXT",
+    "priority" => "",
+    "ttl"      => "14400",
+    "value"    => $spfRecord
+  ],
+  [
+    "name"     => "_dmarc",
+    "type"     => "TXT",
+    "priority" => "",
+    "ttl"      => "14400",
+    "value"    => $dmarcRecord
+  ],
+  [
+    "name"     => $dkimSelector . "._domainkey",
+    "type"     => "TXT",
+    "priority" => "",
+    "ttl"      => "3600",
+    "value"    => $dkimRecord
+  ]
 ];
 ?>
 
@@ -506,8 +506,8 @@ function copyAllDnsRecords() {
         Cada dominio cuenta con su propia direccion webmail aislada. Puedes ingresar desde cualquier navegador web:
       </p>
 
-      <div class="p-3 bg-dark text-light rounded text-center mb-3">
-        <a href="http://webmail.<?= $domain["domain_name"] ?>" target="_blank" class="h5 text-info text-decoration-none font-monospace d-block my-2">
+      <div class="p-3 bg-body-tertiary rounded border text-center mb-3">
+        <a href="http://webmail.<?= $domain["domain_name"] ?>" target="_blank" class="h5 text-primary text-decoration-none font-monospace d-block my-2">
           <i class="bi bi-window-fullscreen me-2"></i> http://webmail.<?= $domain["domain_name"] ?>
         </a>
       </div>

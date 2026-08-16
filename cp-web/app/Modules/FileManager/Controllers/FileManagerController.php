@@ -202,7 +202,7 @@ class FileManagerController {
 
             $targetDir = empty($path) ? ($baseDir . "/" . $folderName) : ($baseDir . "/" . trim($path, "/") . "/" . $folderName);
             Engine::execute("pirulu-files", ["mkdir", $targetDir, $username]);
-            View::setFlash("success", "Carpeta " . htmlspecialchars($folderName) . " creada.");
+            View::setFlash("success", "Carpeta " . $folderName . " creada.");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -225,7 +225,7 @@ class FileManagerController {
 
             $targetFile = empty($path) ? ($baseDir . "/" . $fileName) : ($baseDir . "/" . trim($path, "/") . "/" . $fileName);
             Engine::execute("pirulu-files", ["touch", $targetFile, $username]);
-            View::setFlash("success", "Archivo " . htmlspecialchars($fileName) . " creado.");
+            View::setFlash("success", "Archivo " . $fileName . " creado.");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -338,9 +338,9 @@ class FileManagerController {
 
         $res = Engine::execute("pirulu-files", ["copy", $source, $dest, $username]);
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Elemento copiado como " . htmlspecialchars($destName) . " exitosamente.");
+            View::setFlash("success", "Elemento copiado como " . $destName . " exitosamente.");
         } else {
-            View::setFlash("danger", "Error al copiar: " . htmlspecialchars($res["message"] ?? "Error"));
+            View::setFlash("danger", "Error al copiar: " . $res["message"] ?? "Error");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -367,9 +367,9 @@ class FileManagerController {
 
         $res = Engine::execute("pirulu-files", ["rename", $source, $dest, $username]);
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Elemento movido a /" . htmlspecialchars($destFolder) . " exitosamente.");
+            View::setFlash("success", "Elemento movido a /" . $destFolder . " exitosamente.");
         } else {
-            View::setFlash("danger", "Error al mover: " . htmlspecialchars($res["message"] ?? "Error"));
+            View::setFlash("danger", "Error al mover: " . $res["message"] ?? "Error");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -401,9 +401,9 @@ class FileManagerController {
 
         $res = Engine::execute("pirulu-files", ["rename", $source, $dest, $username]);
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Elemento renombrado a " . htmlspecialchars($newName) . " exitosamente.");
+            View::setFlash("success", "Elemento renombrado a " . $newName . " exitosamente.");
         } else {
-            View::setFlash("danger", "Error al renombrar: " . htmlspecialchars($res["message"] ?? "Error"));
+            View::setFlash("danger", "Error al renombrar: " . $res["message"] ?? "Error");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -436,9 +436,9 @@ class FileManagerController {
 
         $res = Engine::execute("pirulu-files", ["zip", $target, $zipDest, $username]);
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Elemento comprimido correctamente en " . htmlspecialchars($zipName) . ".");
+            View::setFlash("success", "Elemento comprimido correctamente en " . $zipName . ".");
         } else {
-            View::setFlash("danger", "Error al comprimir: " . htmlspecialchars($res["message"] ?? "Error"));
+            View::setFlash("danger", "Error al comprimir: " . $res["message"] ?? "Error");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -465,7 +465,7 @@ class FileManagerController {
         if (isset($res["status"]) && $res["status"] === "success") {
             View::setFlash("success", "Archivo ZIP extraido correctamente.");
         } else {
-            View::setFlash("danger", "Error al extraer archivo ZIP: " . htmlspecialchars($res["raw_output"] ?? "Error"));
+            View::setFlash("danger", "Error al extraer archivo ZIP: " . $res["raw_output"] ?? "Error");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -534,7 +534,7 @@ class FileManagerController {
 
         $target = empty($path) ? ($baseDir . "/" . $item) : ($baseDir . "/" . trim($path, "/") . "/" . $item);
         Engine::execute("pirulu-files", ["chmod", $target, $mode]);
-        View::setFlash("success", "Permisos actualizados a " . htmlspecialchars($mode) . ".");
+        View::setFlash("success", "Permisos actualizados a " . $mode . ".");
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
         exit;
@@ -554,9 +554,9 @@ class FileManagerController {
         $res = Engine::execute("pirulu-composer", [$action, $username, $domain, $path]);
 
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Composer " . htmlspecialchars($action) . " ejecutado correctamente.");
+            View::setFlash("success", "Composer " . $action . " ejecutado correctamente.");
         } else {
-            View::setFlash("danger", "Error en Composer: " . htmlspecialchars($res["message"] ?? "Fallo"));
+            View::setFlash("danger", "Error en Composer: " . $res["message"] ?? "Fallo");
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));

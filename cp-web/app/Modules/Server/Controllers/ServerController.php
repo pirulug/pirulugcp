@@ -84,7 +84,7 @@ class ServerController {
             $stmt = $db->prepare("UPDATE server_settings SET server_hostname = ?, updated_at = datetime('now') WHERE id = 1");
             $stmt->execute([$hostname]);
 
-            View::setFlash("success", "Nombre del servidor actualizado a " . htmlspecialchars($hostname) . " exitosamente.");
+            View::setFlash("success", "Nombre del servidor actualizado a " . $hostname . " exitosamente.");
         } else {
             View::setFlash("danger", "Error al configurar el nombre del servidor: " . ($res["message"] ?? "Fallo"));
         }
@@ -105,7 +105,7 @@ class ServerController {
             $stmt = $db->prepare("UPDATE server_settings SET panel_domain = ?, updated_at = datetime('now') WHERE id = 1");
             $stmt->execute([$panelDomain]);
 
-            View::setFlash("success", "Dominio de acceso al panel configurado correctamente a " . htmlspecialchars($panelDomain ?: "por defecto") . ".");
+            View::setFlash("success", "Dominio de acceso al panel configurado correctamente a " . $panelDomain ?: "por defecto" . ".");
         } else {
             View::setFlash("danger", "Error al configurar dominio del panel: " . ($res["message"] ?? "Fallo"));
         }
@@ -132,7 +132,7 @@ class ServerController {
             $stmt = $db->prepare("UPDATE server_settings SET server_timezone = ?, updated_at = datetime('now') WHERE id = 1");
             $stmt->execute([$timezone]);
 
-            View::setFlash("success", "Zona horaria actualizada a " . htmlspecialchars($timezone) . " (Hora actual: " . ($res["current_time"] ?? "") . ").");
+            View::setFlash("success", "Zona horaria actualizada a " . $timezone . " (Hora actual: " . ($res["current_time"] ?? "") . ").");
         } else {
             View::setFlash("danger", "Error al configurar zona horaria: " . ($res["message"] ?? "Fallo"));
         }
@@ -202,7 +202,7 @@ class ServerController {
             ");
             $stmt->execute([$repoUrl, $detectedBranch, $isPrivate, $autoUpdate]);
 
-            View::setFlash("success", "Repositorio de actualizaciones vinculado con exito (Rama: " . htmlspecialchars($detectedBranch) . ").");
+            View::setFlash("success", "Repositorio de actualizaciones vinculado con exito (Rama: " . $detectedBranch . ").");
         } else {
             View::setFlash("danger", "Error al conectar repositorio: " . ($res["message"] ?? "Fallo"));
         }

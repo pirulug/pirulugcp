@@ -17,16 +17,16 @@
     <div class="card-body">
       <!-- Mensaje informativo de prefijo -->
       <div class="text-muted small fst-italic mb-3">
-        El prefijo "<strong class="text-body" id="user_prefix_display"><?= htmlspecialchars($users[0]["username"] ?? "admin") ?>_</strong>" sera automaticamente anadido a los nombres de usuario y base de datos
+        El prefijo "<strong class="text-body" id="user_prefix_display"><?= $users[0]["username"] ?? "admin" ?>_</strong>" sera automaticamente anadido a los nombres de usuario y base de datos
       </div>
 
-      <!-- Selector de Usuario Propietario (si hay varios) -->
+      <!-- Selector de Usuario Propietario -->
       <div class="mb-3">
         <label for="user_id" class="form-label">Usuario Propietario <span class="text-danger">*</span></label>
         <select class="form-select" id="user_id" name="user_id" required>
           <?php foreach ($users as $user): ?>
-            <option value="<?= (int)$user["id"] ?>" data-username="<?= htmlspecialchars($user["username"]) ?>">
-              <?= htmlspecialchars($user["username"]) ?>
+            <option value="<?= (int)$user["id"] ?>" data-username="<?= $user["username"] ?>">
+              <?= $user["username"] ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -37,7 +37,7 @@
         <label for="db_name" class="form-label">Base de Datos <span class="text-danger">*</span></label>
         <input type="text" class="form-control" id="db_name" name="db_name" placeholder="ej. pirupos" required autofocus oninput="updatePreviews()">
         <div class="text-muted small fst-italic mt-1" id="db_name_preview">
-          <?= htmlspecialchars($users[0]["username"] ?? "admin") ?>_
+          <?= $users[0]["username"] ?? "admin" ?>_
         </div>
       </div>
 
@@ -53,19 +53,19 @@
       <!-- Campo: Nombre de Usuario -->
       <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
-          <label for="db_user" class="form-label mb-0">Nombre de Usuario <span class="text-danger">*</span></label>
+          <label for="db_user" class="form-label">Nombre de Usuario <span class="text-danger">*</span></label>
           <span class="text-muted small fst-italic">(El tamano maximo de caracteres es 32, incluyendo el prefijo)</span>
         </div>
         <input type="text" class="form-control" id="db_user" name="db_user" placeholder="ej. pirupos" required oninput="updatePreviews()">
         <div class="text-muted small fst-italic mt-1" id="db_user_preview">
-          <?= htmlspecialchars($users[0]["username"] ?? "admin") ?>_
+          <?= $users[0]["username"] ?? "admin" ?>_
         </div>
       </div>
 
       <!-- Campo: Contrasena con icono generador -->
       <div class="mb-3">
         <div class="d-flex align-items-center gap-2 mb-1">
-          <label for="db_password" class="form-label mb-0">Contrasena <span class="text-danger">*</span></label>
+          <label for="db_password" class="form-label">Contrasena <span class="text-danger">*</span></label>
           <a href="javascript:void(0)" onclick="generatePassword()" class="text-success fs-5 text-decoration-none" title="Generar contrasena segura">
             <i class="bi bi-arrow-clockwise"></i>
           </a>

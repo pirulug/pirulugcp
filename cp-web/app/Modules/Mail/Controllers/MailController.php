@@ -79,7 +79,7 @@ class MailController {
                 $res["spf_record"] ?? ""
             ]);
 
-            View::setFlash("success", "Servicio de correo y Webmail habilitados para " . htmlspecialchars($domainName) . " exitosamente.");
+            View::setFlash("success", "Servicio de correo y Webmail habilitados para " . $domainName . " exitosamente.");
             header("Location: /mail/domain/" . $domainId);
             exit();
         } else {
@@ -103,7 +103,7 @@ class MailController {
             $stmt = $db->prepare("DELETE FROM mail_domains WHERE domain_id = ?");
             $stmt->execute([$domainId]);
 
-            View::setFlash("info", "Servicio de correo deshabilitado para " . htmlspecialchars($domainName) . ".");
+            View::setFlash("info", "Servicio de correo deshabilitado para " . $domainName . ".");
         }
 
         header("Location: /mail");
@@ -189,7 +189,7 @@ class MailController {
         $stmt = $db->prepare("SELECT id FROM mail_accounts WHERE account_email = ?");
         $stmt->execute([$email]);
         if ($stmt->fetch()) {
-            View::setFlash("danger", "La cuenta de correo " . htmlspecialchars($email) . " ya existe.");
+            View::setFlash("danger", "La cuenta de correo " . $email . " ya existe.");
             header("Location: /mail/domain/" . $domainId . "?tab=accounts");
             exit();
         }
@@ -203,7 +203,7 @@ class MailController {
             ");
             $stmt->execute([$domain["mail_domain_id"], $user, $email, $quotaMb]);
 
-            View::setFlash("success", "Cuenta de correo " . htmlspecialchars($email) . " creada exitosamente.");
+            View::setFlash("success", "Cuenta de correo " . $email . " creada exitosamente.");
         } else {
             View::setFlash("danger", "Error al crear cuenta: " . ($res["message"] ?? "Fallo"));
         }
@@ -233,7 +233,7 @@ class MailController {
         if ($account) {
             $res = Engine::execute("pirulu-mail", ["account-passwd", $account["account_email"], $newPassword]);
             if (isset($res["status"]) && $res["status"] === "success") {
-                View::setFlash("success", "Contraseña de " . htmlspecialchars($account["account_email"]) . " actualizada exitosamente.");
+                View::setFlash("success", "Contraseña de " . $account["account_email"] . " actualizada exitosamente.");
             } else {
                 View::setFlash("danger", "Error al actualizar contraseña: " . ($res["message"] ?? "Fallo"));
             }
@@ -265,7 +265,7 @@ class MailController {
             if (isset($res["status"]) && $res["status"] === "success") {
                 $stmt = $db->prepare("UPDATE mail_accounts SET quota_mb = ? WHERE id = ?");
                 $stmt->execute([$quotaMb, $accountId]);
-                View::setFlash("success", "Cuota de " . htmlspecialchars($account["account_email"]) . " actualizada a " . $quotaMb . " MB.");
+                View::setFlash("success", "Cuota de " . $account["account_email"] . " actualizada a " . $quotaMb . " MB.");
             } else {
                 View::setFlash("danger", "Error al actualizar cuota: " . ($res["message"] ?? "Fallo"));
             }
@@ -288,7 +288,7 @@ class MailController {
             $stmt = $db->prepare("DELETE FROM mail_accounts WHERE id = ?");
             $stmt->execute([$accountId]);
 
-            View::setFlash("success", "Cuenta " . htmlspecialchars($account["account_email"]) . " eliminada exitosamente.");
+            View::setFlash("success", "Cuenta " . $account["account_email"] . " eliminada exitosamente.");
             header("Location: /mail/domain/" . $account["domain_id"] . "?tab=accounts");
             exit();
         }
@@ -333,7 +333,7 @@ class MailController {
             ");
             $stmt->execute([$domain["mail_domain_id"], $sourceEmail, $destination]);
 
-            View::setFlash("success", "Reenvio de " . htmlspecialchars($sourceEmail) . " a " . htmlspecialchars($destination) . " configurado exitosamente.");
+            View::setFlash("success", "Reenvio de " . $sourceEmail . " a " . $destination . " configurado exitosamente.");
         } else {
             View::setFlash("danger", "Error al configurar reenvio: " . ($res["message"] ?? "Fallo"));
         }

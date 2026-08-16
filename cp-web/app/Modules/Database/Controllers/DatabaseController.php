@@ -74,7 +74,7 @@ class DatabaseController {
       $encPass = self::encryptPassword($dbPass);
       $stmt = $db->prepare("INSERT INTO databases (db_name, db_user, db_password_enc, user_id) VALUES (?, ?, ?, ?)");
       $stmt->execute([$fullDbName, $fullDbUser, $encPass, $userId]);
-      View::setFlash("success", "Base de datos " . htmlspecialchars($fullDbName) . " creada exitosamente.");
+      View::setFlash("success", "Base de datos " . $fullDbName . " creada exitosamente.");
     } else {
       View::setFlash("danger", "Error al crear la base de datos en MariaDB.");
     }
@@ -147,7 +147,7 @@ class DatabaseController {
         $encPass = self::encryptPassword($dbPass);
         $stmt = $db->prepare("UPDATE databases SET db_password_enc = ? WHERE id = ?");
         $stmt->execute([$encPass, (int)$id]);
-        View::setFlash("success", "Contrasena de la base de datos " . htmlspecialchars($dbRow["db_name"]) . " actualizada exitosamente.");
+        View::setFlash("success", "Contrasena de la base de datos " . $dbRow["db_name"] . " actualizada exitosamente.");
       } else {
         View::setFlash("danger", "Error al actualizar la contrasena en MariaDB.");
       }
@@ -237,7 +237,7 @@ class DatabaseController {
       $stmt = $db->prepare("DELETE FROM databases WHERE id = ?");
       $stmt->execute([(int)$id]);
 
-      View::setFlash("success", "Base de datos " . htmlspecialchars($dbRow["db_name"]) . " eliminada.");
+      View::setFlash("success", "Base de datos " . $dbRow["db_name"] . " eliminada.");
     }
 
     header("Location: /database");

@@ -77,9 +77,9 @@ class WebController {
         if (isset($res["status"]) && $res["status"] === "success") {
             $stmt = $db->prepare("INSERT INTO domains (domain, user_id, php_version, doc_root_suffix, ssl_enabled) VALUES (?, ?, ?, ?, 0)");
             $stmt->execute([$domain, $userId, $phpVersion, $docRootSuffix]);
-            View::setFlash("success", "Dominio " . htmlspecialchars($domain) . " creado correctamente con PHP " . htmlspecialchars($phpVersion) . " (Raiz: " . htmlspecialchars($docRootSuffix) . ").");
+            View::setFlash("success", "Dominio " . $domain . " creado correctamente con PHP " . $phpVersion . " (Raiz: " . $docRootSuffix . ").");
         } else {
-            View::setFlash("danger", "Error al crear el dominio: " . htmlspecialchars($res["raw_output"] ?? "Fallo en el servidor web/FPM"));
+            View::setFlash("danger", "Error al crear el dominio: " . $res["raw_output"] ?? "Fallo en el servidor web/FPM");
         }
 
         header("Location: /web");
@@ -110,9 +110,9 @@ class WebController {
             if (isset($res["status"]) && $res["status"] === "success") {
                 $stmt = $db->prepare("UPDATE domains SET doc_root_suffix = ? WHERE id = ?");
                 $stmt->execute([$newSuffix, $domainId]);
-                View::setFlash("success", "Carpeta raiz actualizada a " . htmlspecialchars($newSuffix) . " para " . htmlspecialchars($domain) . ".");
+                View::setFlash("success", "Carpeta raiz actualizada a " . $newSuffix . " para " . $domain . ".");
             } else {
-                View::setFlash("danger", "Error al cambiar carpeta raiz: " . htmlspecialchars($res["raw_output"] ?? "Error"));
+                View::setFlash("danger", "Error al cambiar carpeta raiz: " . $res["raw_output"] ?? "Error");
             }
         }
 
@@ -140,7 +140,7 @@ class WebController {
             if (isset($res["status"]) && $res["status"] === "success") {
                 $stmt = $db->prepare("UPDATE domains SET php_version = ? WHERE id = ?");
                 $stmt->execute([$newPhp, $domainId]);
-                View::setFlash("success", "Version de PHP actualizada a " . htmlspecialchars($newPhp) . " para " . htmlspecialchars($domain) . ".");
+                View::setFlash("success", "Version de PHP actualizada a " . $newPhp . " para " . $domain . ".");
             } else {
                 View::setFlash("danger", "Error al cambiar version de PHP.");
             }
@@ -167,9 +167,9 @@ class WebController {
             if (isset($res["status"]) && $res["status"] === "success") {
                 $stmt = $db->prepare("UPDATE domains SET ssl_enabled = 1 WHERE id = ?");
                 $stmt->execute([(int)$id]);
-                View::setFlash("success", "Certificado SSL Let's Encrypt instalado y activado para " . htmlspecialchars($domain) . ".");
+                View::setFlash("success", "Certificado SSL Let's Encrypt instalado y activado para " . $domain . ".");
             } else {
-                View::setFlash("danger", "Error al obtener certificado SSL: " . htmlspecialchars($res["raw_output"] ?? "Verifica que el DNS apunte al servidor."));
+                View::setFlash("danger", "Error al obtener certificado SSL: " . $res["raw_output"] ?? "Verifica que el DNS apunte al servidor.");
             }
         }
 
@@ -194,7 +194,7 @@ class WebController {
             $stmt = $db->prepare("UPDATE domains SET ssl_enabled = 0 WHERE id = ?");
             $stmt->execute([(int)$id]);
 
-            View::setFlash("info", "Certificado SSL deshabilitado para " . htmlspecialchars($domain) . ".");
+            View::setFlash("info", "Certificado SSL deshabilitado para " . $domain . ".");
         }
 
         header("Location: /web");
@@ -218,7 +218,7 @@ class WebController {
             $stmt = $db->prepare("DELETE FROM domains WHERE id = ?");
             $stmt->execute([(int)$id]);
 
-            View::setFlash("success", "Dominio " . htmlspecialchars($domain) . " eliminado correctamente.");
+            View::setFlash("success", "Dominio " . $domain . " eliminado correctamente.");
         }
 
         header("Location: /web");

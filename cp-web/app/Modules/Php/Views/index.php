@@ -29,7 +29,7 @@ $list = $phpVersions ?? $versions ?? [];
       <tbody>
         <?php if (empty($list)): ?>
           <tr>
-            <td colspan="6" class="text-center py-4 text-muted">
+            <td colspan="6" class="text-center py-3 text-muted">
               No se detectaron servicios PHP-FPM instalados.
             </td>
           </tr>

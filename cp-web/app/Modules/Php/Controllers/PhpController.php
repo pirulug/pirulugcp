@@ -43,7 +43,7 @@ class PhpController {
         $iniData = Engine::execute("pirulu-php", ["get-ini", $version]);
 
         if (!isset($iniData["status"]) || $iniData["status"] !== "success") {
-            View::setFlash("danger", "No se pudo obtener la configuración de PHP " . htmlspecialchars($version) . ".");
+            View::setFlash("danger", "No se pudo obtener la configuración de PHP " . $version . ".");
             header("Location: /php");
             exit();
         }
@@ -89,9 +89,9 @@ class PhpController {
         ]);
 
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Configuración de PHP " . htmlspecialchars($version) . " guardada y servicio reiniciado exitosamente.");
+            View::setFlash("success", "Configuración de PHP " . $version . " guardada y servicio reiniciado exitosamente.");
         } else {
-            View::setFlash("danger", "Error al guardar configuración de PHP " . htmlspecialchars($version) . ": " . ($res["message"] ?? "Fallo"));
+            View::setFlash("danger", "Error al guardar configuración de PHP " . $version . ": " . ($res["message"] ?? "Fallo"));
         }
 
         header("Location: /php/config/" . $version . "?tab=basic");
@@ -108,9 +108,9 @@ class PhpController {
         $res = Engine::execute("pirulu-php", ["save-raw-ini", $version, $b64Content]);
 
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Archivo php.ini guardado y PHP " . htmlspecialchars($version) . " reiniciado exitosamente.");
+            View::setFlash("success", "Archivo php.ini guardado y PHP " . $version . " reiniciado exitosamente.");
         } else {
-            View::setFlash("danger", "Error al guardar archivo php.ini de PHP " . htmlspecialchars($version) . ": " . ($res["message"] ?? "Fallo"));
+            View::setFlash("danger", "Error al guardar archivo php.ini de PHP " . $version . ": " . ($res["message"] ?? "Fallo"));
         }
 
         header("Location: /php/config/" . $version . "?tab=advanced");
@@ -123,9 +123,9 @@ class PhpController {
         $version = preg_replace("/[^0-9.]/", "", $version);
         $res = Engine::execute("pirulu-php", ["restart", $version]);
         if (isset($res["status"]) && $res["status"] === "success") {
-            View::setFlash("success", "Servicio PHP-FPM " . htmlspecialchars($version) . " reiniciado correctamente.");
+            View::setFlash("success", "Servicio PHP-FPM " . $version . " reiniciado correctamente.");
         } else {
-            View::setFlash("danger", "Error al reiniciar PHP-FPM " . htmlspecialchars($version) . ".");
+            View::setFlash("danger", "Error al reiniciar PHP-FPM " . $version . ".");
         }
 
         header("Location: /php");

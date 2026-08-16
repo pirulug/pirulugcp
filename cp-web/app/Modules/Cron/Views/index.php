@@ -38,7 +38,7 @@
       <tbody>
         <?php if (empty($cronJobs)): ?>
           <tr>
-            <td colspan="6" class="text-center py-4 text-muted">
+            <td colspan="6" class="text-center py-3 text-muted">
               No hay tareas cron programadas en el sistema. Puedes <a href="#" data-bs-toggle="modal" data-bs-target="#createCronModal" class="text-primary fw-bold text-uppercase">crear una nueva tarea</a>.
             </td>
           </tr>
@@ -140,27 +140,27 @@
           <!-- Campos Cron Detallados -->
           <div class="row g-2 mb-3">
             <div class="col">
-              <label for="create_minute" class="form-label font-monospace small">Minuto</label>
+              <label for="create_minute" class="form-label">Minuto</label>
               <input type="text" class="form-control font-monospace text-center" id="create_minute" name="minute" value="*" required>
               <div class="form-text small text-center">0-59 o *</div>
             </div>
             <div class="col">
-              <label for="create_hour" class="form-label font-monospace small">Hora</label>
+              <label for="create_hour" class="form-label">Hora</label>
               <input type="text" class="form-control font-monospace text-center" id="create_hour" name="hour" value="*" required>
               <div class="form-text small text-center">0-23 o *</div>
             </div>
             <div class="col">
-              <label for="create_day" class="form-label font-monospace small">Dia</label>
+              <label for="create_day" class="form-label">Dia</label>
               <input type="text" class="form-control font-monospace text-center" id="create_day" name="day" value="*" required>
               <div class="form-text small text-center">1-31 o *</div>
             </div>
             <div class="col">
-              <label for="create_month" class="form-label font-monospace small">Mes</label>
+              <label for="create_month" class="form-label">Mes</label>
               <input type="text" class="form-control font-monospace text-center" id="create_month" name="month" value="*" required>
               <div class="form-text small text-center">1-12 o *</div>
             </div>
             <div class="col">
-              <label for="create_weekday" class="form-label font-monospace small">Dia Semana</label>
+              <label for="create_weekday" class="form-label">Dia Semana</label>
               <input type="text" class="form-control font-monospace text-center" id="create_weekday" name="weekday" value="*" required>
               <div class="form-text small text-center">0-7 o *</div>
             </div>
@@ -252,23 +252,23 @@
           <!-- Campos Cron Detallados -->
           <div class="row g-2 mb-3">
             <div class="col">
-              <label for="edit_minute" class="form-label font-monospace small">Minuto</label>
+              <label for="edit_minute" class="form-label">Minuto</label>
               <input type="text" class="form-control font-monospace text-center" id="edit_minute" name="minute" required>
             </div>
             <div class="col">
-              <label for="edit_hour" class="form-label font-monospace small">Hora</label>
+              <label for="edit_hour" class="form-label">Hora</label>
               <input type="text" class="form-control font-monospace text-center" id="edit_hour" name="hour" required>
             </div>
             <div class="col">
-              <label for="edit_day" class="form-label font-monospace small">Dia</label>
+              <label for="edit_day" class="form-label">Dia</label>
               <input type="text" class="form-control font-monospace text-center" id="edit_day" name="day" required>
             </div>
             <div class="col">
-              <label for="edit_month" class="form-label font-monospace small">Mes</label>
+              <label for="edit_month" class="form-label">Mes</label>
               <input type="text" class="form-control font-monospace text-center" id="edit_month" name="month" required>
             </div>
             <div class="col">
-              <label for="edit_weekday" class="form-label font-monospace small">Dia Semana</label>
+              <label for="edit_weekday" class="form-label">Dia Semana</label>
               <input type="text" class="form-control font-monospace text-center" id="edit_weekday" name="weekday" required>
             </div>
           </div>
@@ -313,21 +313,21 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title font-monospace" id="runOutputTitle">
-          <i class="bi bi-terminal text-info me-2"></i>Ejecutando Tarea Cron
+          <i class="bi bi-terminal text-primary me-2"></i>Ejecutando Tarea Cron
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body p-0">
-        <div class="p-3 bg-dark text-light font-monospace" style="min-height: 250px; max-height: 60vh; overflow: auto;">
-          <div id="runOutputStatus" class="mb-2 text-info">
+      <div class="modal-body">
+        <div class="p-3 bg-body-tertiary text-body border rounded font-monospace" style="min-height: 250px; max-height: 60vh; overflow: auto;">
+          <div id="runOutputStatus" class="mb-2 text-primary">
             <span class="spinner-border spinner-border-sm me-2"></span>Ejecutando comando en el servidor...
           </div>
-          <pre id="runOutputText" class="text-light m-0 font-monospace" style="white-space: pre-wrap; word-break: break-all; font-size: 0.88rem;"></pre>
+          <pre id="runOutputText" class="text-body m-0 font-monospace" style="white-space: pre-wrap; word-break: break-all; font-size: 0.88rem;"></pre>
         </div>
       </div>
       <div class="modal-footer justify-content-between">
         <span id="runExecutionTime" class="text-muted small"></span>
-        <button type="button" class="btn btn-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-outline-secondary text-uppercase fw-bold" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>

@@ -3,7 +3,7 @@
     <h1 class="h4 mb-0">Servidor de Correo y Webmail</h1>
     <span class="text-muted small">Administracion de cuentas de correo corporativo, buzones IMAP/POP3, reenvios y acceso a Webmail independiente.</span>
   </div>
-  <div class="d-flex gap-2">
+  <div>
     <a href="/mail" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold text-nowrap">
       <i class="bi bi-arrow-clockwise me-1"></i> Refrescar
     </a>
@@ -60,7 +60,7 @@
   </h6>
 
   <?php if (empty($domains)): ?>
-    <div class="text-center py-4">
+    <div class="text-center py-3">
       <i class="bi bi-envelope-x text-muted fs-1 mb-2 d-block"></i>
       <h6 class="text-muted">No hay dominios creados en el panel</h6>
       <p class="small text-muted mb-3">Primero crea un dominio web en el panel para habilitar su servidor de correo y Webmail.</p>

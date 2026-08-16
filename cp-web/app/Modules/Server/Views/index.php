@@ -195,9 +195,9 @@
         <i class="bi bi-clock-history me-1"></i> Reloj y Estado del Tiempo
       </h6>
 
-      <div class="bg-dark p-3 rounded text-light text-center mb-3">
+      <div class="bg-body-tertiary p-3 rounded border text-center mb-3">
         <div class="text-muted small text-uppercase">Hora Actual del Servidor</div>
-        <h4 class="font-monospace my-1 text-info"><?= $serverConfig["current_time"] ?></h4>
+        <h4 class="font-monospace my-1 text-primary"><?= $serverConfig["current_time"] ?></h4>
         <span class="badge bg-secondary font-monospace"><?= $serverConfig["timezone"] ?></span>
       </div>
 
@@ -308,7 +308,7 @@
           Configura este Webhook en tu repositorio de GitHub para que el panel se actualice automaticamente en cada <code>git push</code>.
         </p>
 
-        <label class="form-label small">URL del Webhook del Panel:</label>
+        <label for="panel_webhook_url" class="form-label">URL del Webhook del Panel:</label>
         <div class="input-group input-group-sm mb-3">
           <input type="text" class="form-control font-monospace" id="panel_webhook_url" value="<?= $webhookUrl ?>" readonly>
           <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('panel_webhook_url', 'URL de Webhook copiada al portapapeles');">
@@ -339,7 +339,7 @@
       </span>
     <?php endif; ?>
   </div>
-  <pre class="bg-dark text-light p-3 rounded small mb-0 font-monospace" style="max-height: 250px; overflow-y: auto;"><code><?= $settings["panel_last_update_log"] ?></code></pre>
+  <pre class="bg-body-tertiary text-body p-3 rounded border small mb-0 font-monospace" style="max-height: 250px; overflow-y: auto;"><code><?= $settings["panel_last_update_log"] ?></code></pre>
 </div>
 <?php endif; ?>
 
@@ -400,7 +400,7 @@
         <h6 class="fw-bold mb-0">
           <i class="bi bi-key me-1"></i> Clave SSH de Actualizacion (Deploy Key)
         </h6>
-        <a href="/server/git/generate-key" class="btn btn-xs btn-outline-warning text-uppercase fw-bold" onclick="return confirm('Generar una nueva clave SSH invalidara la anterior en GitHub. Deseas continuar?')">
+        <a href="/server/git/generate-key" class="btn btn-sm btn-outline-warning text-uppercase fw-bold" onclick="return confirm('Generar una nueva clave SSH invalidara la anterior en GitHub. Deseas continuar?')">
           <i class="bi bi-arrow-repeat me-1"></i> Regenerar Clave
         </a>
       </div>
@@ -410,7 +410,7 @@
       </p>
 
       <div class="mb-3">
-        <label class="form-label small">Clave Publica SSH (Ed25519):</label>
+        <label for="panel_ssh_key_text" class="form-label">Clave Publica SSH (Ed25519):</label>
         <textarea class="form-control font-monospace small" id="panel_ssh_key_text" rows="3" readonly><?= $serverConfig["public_key"] ?></textarea>
       </div>
 

@@ -196,7 +196,7 @@
 
         <?php if (empty($items)): ?>
           <tr>
-            <td colspan="5" class="text-center py-4 text-muted">
+            <td colspan="5" class="text-center py-3 text-muted">
               Carpeta vacia. Puedes <a href="#" data-bs-toggle="modal" data-bs-target="#uploadModal" class="text-primary fw-bold text-uppercase">subir archivos</a> o <a href="#" data-bs-toggle="modal" data-bs-target="#newFileModal" class="text-primary fw-bold text-uppercase">crear uno nuevo</a>.
             </td>
           </tr>
@@ -262,7 +262,7 @@
                     <button class="btn btn-sm btn-outline-secondary text-uppercase fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                       <i class="bi bi-three-dots-vertical"></i> Opciones
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                    <ul class="dropdown-menu dropdown-menu-end border">
                       <li>
                         <a class="dropdown-item" href="/files/download?domain=<?= urlencode($selectedDomain) ?>&path=<?= urlencode($item["rel_path"]) ?>&username=<?= urlencode($currentDomain["username"] ?? "admin") ?>">
                           <i class="bi bi-download me-2"></i> Descargar
@@ -551,7 +551,7 @@
 <!-- Modal: Editor y Visor de Codigo con PrismJS -->
 <div class="modal fade" id="editorModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content shadow-lg border">
+    <div class="modal-content border">
       <div class="modal-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 px-3 border-bottom">
         <div class="d-flex align-items-center">
           <i class="bi bi-file-earmark-code text-primary fs-5 me-2"></i>
@@ -649,8 +649,8 @@
             <input type="text" class="form-control font-monospace" id="chmodMode" name="mode" required>
           </div>
           <div class="d-flex gap-2">
-            <button type="button" class="btn btn-xs btn-outline-secondary flex-fill" onclick="document.getElementById('chmodMode').value='0644'">0644 (Archivo)</button>
-            <button type="button" class="btn btn-xs btn-outline-secondary flex-fill" onclick="document.getElementById('chmodMode').value='0755'">0755 (Carpeta)</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill text-uppercase fw-bold" onclick="document.getElementById('chmodMode').value='0644'">0644 (Archivo)</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill text-uppercase fw-bold" onclick="document.getElementById('chmodMode').value='0755'">0755 (Carpeta)</button>
           </div>
         </div>
         <div class="modal-footer">
