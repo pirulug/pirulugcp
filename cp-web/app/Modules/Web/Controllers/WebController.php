@@ -316,7 +316,7 @@ class WebController {
     }
     unset($tr);
 
-    $recentRequests = array_slice(array_reverse($requestsList), 0, 30);
+    $recentRequests = array_slice(array_reverse($requestsList), 0, 150);
 
     // Espacio en disco real y exclusivo del dominio
     $diskSize = "0 KB";

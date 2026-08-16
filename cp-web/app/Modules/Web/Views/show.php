@@ -269,52 +269,380 @@ $dbg = $debugData ?? [];
     <?php endif; ?>
   </div>
 
-  <!-- Tabla de Solicitudes Recientes en Vivo -->
+  <!-- ======================================================================= -->
+  <!-- SEGUIMIENTO Y FILTRO AVANZADO DE PETICIONES HTTP EN VIVO                -->
+  <!-- ======================================================================= -->
   <div class="bg-body p-3 rounded mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <span class="text-uppercase small text-muted fw-bold">Solicitudes Recientes en Vivo</span>
-      <span class="font-monospace small text-muted">Últimas 30 peticiones</span>
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <div>
+        <h5 class="mb-0 fw-bold d-flex align-items-center">
+          <i class="bi bi-activity me-2 text-primary"></i> Seguimiento de Peticiones HTTP
+        </h5>
+        <span class="text-muted small">Inspección y filtrado en tiempo real de tráfico recibido por <strong><?= $domainName ?></strong>.</span>
+      </div>
+      <div>
+        <span class="badge bg-secondary-subtle text-secondary font-monospace px-3 py-2" id="reqCounterBadge">
+          <i class="bi bi-list-check me-1"></i> <span id="visibleReqCount"><?= count($m["recent_requests"]) ?></span> de <?= count($m["recent_requests"]) ?> peticiones mostradas
+        </span>
+      </div>
     </div>
 
+    <!-- Barra de Filtros de Peticiones -->
+    <div class="p-3 rounded border bg-body-tertiary mb-3">
+      <div class="row g-2 align-items-center">
+        <!-- Busqueda por Ruta o IP -->
+        <div class="col-md-4">
+          <label class="form-label text-muted small mb-1">Buscar por Ruta o IP</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-transparent"><i class="bi bi-search"></i></span>
+            <input type="text" id="reqFilterSearch" class="form-control" placeholder="Ej: /wp-login, /api, 192.168..." onkeyup="applyRequestFilters()">
+          </div>
+        </div>
+
+        <!-- Filtro por Categoria de Estado HTTP -->
+        <div class="col-md-3">
+          <label class="form-label text-muted small mb-1">Grupo de Estado</label>
+          <select id="reqFilterStatusGroup" class="form-select form-select-sm" onchange="syncStatusSelectToPills()">
+            <option value="all">-- Todos los Estados --</option>
+            <option value="2xx">2xx Éxito (<?= $m["status_counts"]["2xx"] ?? 0 ?>)</option>
+            <option value="3xx">3xx Redirecciones (<?= $m["status_counts"]["3xx"] ?? 0 ?>)</option>
+            <option value="4xx">4xx Errores Cliente (<?= $m["status_counts"]["4xx"] ?? 0 ?>)</option>
+            <option value="5xx">5xx Errores Servidor (<?= $m["status_counts"]["5xx"] ?? 0 ?>)</option>
+          </select>
+        </div>
+
+        <!-- Filtro por Metodo HTTP -->
+        <div class="col-md-3">
+          <label class="form-label text-muted small mb-1">Método HTTP</label>
+          <select id="reqFilterMethod" class="form-select form-select-sm" onchange="applyRequestFilters()">
+            <option value="all">-- Todos los Métodos --</option>
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+            <option value="PATCH">PATCH</option>
+            <option value="HEAD">HEAD</option>
+            <option value="OPTIONS">OPTIONS</option>
+          </select>
+        </div>
+
+        <!-- Boton Limpiar Filtros -->
+        <div class="col-md-2 text-end pt-3">
+          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-uppercase fw-bold" onclick="resetRequestFilters()">
+            <i class="bi bi-arrow-counterclockwise me-1"></i> Restablecer
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Pills de Estado -->
+      <div class="d-flex flex-wrap gap-2 mt-3 pt-2 border-top">
+        <button type="button" class="btn btn-sm btn-primary active req-status-pill" data-status="all" onclick="selectStatusPill('all', this)">
+          Todos <span class="badge bg-light text-dark ms-1"><?= $m["total_requests"] ?? 0 ?></span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success req-status-pill" data-status="2xx" onclick="selectStatusPill('2xx', this)">
+          2xx Éxito <span class="badge bg-success-subtle text-success ms-1"><?= $m["status_counts"]["2xx"] ?? 0 ?></span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info req-status-pill" data-status="3xx" onclick="selectStatusPill('3xx', this)">
+          3xx Redirecciones <span class="badge bg-info-subtle text-info ms-1"><?= $m["status_counts"]["3xx"] ?? 0 ?></span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-warning req-status-pill" data-status="4xx" onclick="selectStatusPill('4xx', this)">
+          4xx Cliente <span class="badge bg-warning-subtle text-warning ms-1"><?= $m["status_counts"]["4xx"] ?? 0 ?></span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger req-status-pill" data-status="5xx" onclick="selectStatusPill('5xx', this)">
+          5xx Servidor <span class="badge bg-danger-subtle text-danger ms-1"><?= $m["status_counts"]["5xx"] ?? 0 ?></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabla de Peticiones Filtrable -->
     <?php if (empty($m["recent_requests"])): ?>
-      <div class="text-muted small text-center py-3">No hay solicitudes recientes en el registro de acceso.</div>
+      <div class="p-4 rounded border text-center my-3 bg-body-tertiary">
+        <i class="bi bi-inbox fs-1 text-muted mb-2 d-block"></i>
+        <h6 class="fw-bold">No hay peticiones registradas aún</h6>
+        <p class="text-muted small mb-0">El dominio no ha recibido solicitudes en el período seleccionado (<code>/var/log/nginx/<?= $domainName ?>_access.log</code>).</p>
+      </div>
     <?php else: ?>
       <div class="table-responsive">
-        <table class="table table-hover align-middle table-sm m-0">
+        <table class="table table-hover align-middle table-sm m-0" id="requestsTrackerTable">
           <thead>
             <tr class="text-muted small text-uppercase">
-              <th class="ps-3">Hora</th>
-              <th>IP</th>
+              <th class="ps-3">Hora / Fecha</th>
+              <th>IP Visitante</th>
               <th>Método</th>
               <th>Ruta Solicitada</th>
-              <th>Estado</th>
+              <th>Estado HTTP</th>
               <th class="text-end pe-3">Transferido</th>
             </tr>
           </thead>
           <tbody class="font-monospace small">
-            <?php foreach ($m["recent_requests"] as $req): ?>
-              <tr>
-                <td class="ps-3 text-muted"><?= $req["date"] ?></td>
-                <td><?= $req["ip"] ?></td>
+            <?php foreach ($m["recent_requests"] as $req): 
+              $statusGroup = ($req["status"] >= 200 && $req["status"] < 300) ? "2xx" : (($req["status"] >= 300 && $req["status"] < 400) ? "3xx" : (($req["status"] >= 400 && $req["status"] < 500) ? "4xx" : "5xx"));
+              $statusBadgeClass = ($statusGroup === "2xx") ? "bg-success-subtle text-success border border-success-subtle" : (($statusGroup === "3xx") ? "bg-info-subtle text-info border border-info-subtle" : (($statusGroup === "4xx") ? "bg-warning-subtle text-warning border border-warning-subtle" : "bg-danger-subtle text-danger border border-danger-subtle"));
+              $methodBadgeClass = ($req["method"] === "POST") ? "bg-primary-subtle text-primary border border-primary-subtle" : (($req["method"] === "GET") ? "bg-success-subtle text-success border border-success-subtle" : (($req["method"] === "DELETE") ? "bg-danger-subtle text-danger border border-danger-subtle" : "bg-warning-subtle text-warning border border-warning-subtle"));
+            ?>
+              <tr class="req-row-item" 
+                  data-status="<?= (int)$req["status"] ?>" 
+                  data-status-group="<?= $statusGroup ?>" 
+                  data-method="<?= $req["method"] ?>" 
+                  data-uri="<?= strtolower($req["uri"]) ?>" 
+                  data-ip="<?= $req["ip"] ?>">
+                <td class="ps-3 text-muted text-nowrap"><?= $req["date"] ?></td>
+                <td class="text-nowrap">
+                  <a href="javascript:void(0)" class="text-decoration-none text-body" onclick="filterByIp('<?= $req["ip"] ?>')" title="Filtrar por esta IP">
+                    <i class="bi bi-geo-alt me-1 text-muted"></i><?= $req["ip"] ?>
+                  </a>
+                </td>
                 <td>
-                  <span class="badge <?= ($req["method"] === "POST") ? "bg-info-subtle text-info" : "bg-success-subtle text-success" ?>">
+                  <span class="badge <?= $methodBadgeClass ?> font-monospace px-2">
                     <?= $req["method"] ?>
                   </span>
                 </td>
-                <td class="fw-bold text-body text-truncate" style="max-width: 320px;"><?= $req["uri"] ?></td>
+                <td class="fw-bold text-body text-truncate" style="max-width: 380px;" title="<?= $req["uri"] ?>">
+                  <?= $req["uri"] ?>
+                </td>
                 <td>
-                  <span class="badge <?= ($req["status"] < 300) ? "bg-success-subtle text-success" : (($req["status"] < 400) ? "bg-info-subtle text-info" : (($req["status"] < 500) ? "bg-warning-subtle text-warning" : "bg-danger-subtle text-danger")) ?>">
+                  <span class="badge <?= $statusBadgeClass ?> font-monospace px-2">
                     <?= $req["status"] ?>
                   </span>
                 </td>
-                <td class="text-end pe-3"><?= $req["bytes_fmt"] ?></td>
+                <td class="text-end pe-3 text-nowrap"><?= $req["bytes_fmt"] ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
         </table>
       </div>
+
+      <!-- Barra de Paginacion de Peticiones -->
+      <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-2 border-top gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <label class="form-label text-muted small mb-0">Mostrar:</label>
+          <select id="reqPageSizeSelect" class="form-select form-select-sm" style="width: auto;" onchange="changeReqPageSize(this.value)">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <span class="text-muted small ms-2" id="reqPageInfo">Mostrando 1 - 25 de <?= count($m["recent_requests"]) ?> peticiones</span>
+        </div>
+        <div id="reqPaginationContainer"></div>
+      </div>
+
+      <div id="noMatchingReqsNotice" class="text-muted small text-center py-4 d-none">
+        <i class="bi bi-filter-circle fs-3 d-block mb-1 text-muted"></i>
+        No se encontraron peticiones que coincidan con los filtros aplicados.
+      </div>
     <?php endif; ?>
   </div>
+
+  <script>
+  let reqCurrentPage = 1;
+  let reqPageSize = 25;
+
+  function changeReqPageSize(newSize) {
+    reqPageSize = parseInt(newSize, 10) || 25;
+    reqCurrentPage = 1;
+    applyRequestFilters();
+  }
+
+  function setReqPage(page) {
+    reqCurrentPage = page;
+    renderRequestPagination();
+  }
+
+  function selectStatusPill(statusGroup, btn) {
+    document.querySelectorAll(".req-status-pill").forEach(b => {
+      b.classList.remove("active", "btn-primary", "btn-success", "btn-info", "btn-warning", "btn-danger");
+      const group = b.getAttribute("data-status");
+      if (group === "2xx") b.classList.add("btn-outline-success");
+      else if (group === "3xx") b.classList.add("btn-outline-info");
+      else if (group === "4xx") b.classList.add("btn-outline-warning");
+      else if (group === "5xx") b.classList.add("btn-outline-danger");
+      else b.classList.add("btn-outline-secondary");
+
+      const badge = b.querySelector(".badge");
+      if (badge && group === "all") {
+        badge.className = "badge bg-secondary-subtle text-secondary ms-1";
+      }
+    });
+
+    btn.classList.add("active");
+    if (statusGroup === "2xx") btn.classList.add("btn-success");
+    else if (statusGroup === "3xx") btn.classList.add("btn-info");
+    else if (statusGroup === "4xx") btn.classList.add("btn-warning");
+    else if (statusGroup === "5xx") btn.classList.add("btn-danger");
+    else {
+      btn.classList.add("btn-primary");
+      const badge = btn.querySelector(".badge");
+      if (badge) badge.className = "badge bg-light text-dark ms-1";
+    }
+
+    const selectEl = document.getElementById("reqFilterStatusGroup");
+    if (selectEl) {
+      selectEl.value = statusGroup;
+    }
+    reqCurrentPage = 1;
+    applyRequestFilters();
+  }
+
+  function syncStatusSelectToPills() {
+    const val = document.getElementById("reqFilterStatusGroup").value;
+    const targetPill = document.querySelector(`.req-status-pill[data-status="${val}"]`) || document.querySelector(`.req-status-pill[data-status="all"]`);
+    if (targetPill) {
+      selectStatusPill(val, targetPill);
+    } else {
+      reqCurrentPage = 1;
+      applyRequestFilters();
+    }
+  }
+
+  function filterByIp(ip) {
+    const searchInput = document.getElementById("reqFilterSearch");
+    if (searchInput) {
+      searchInput.value = ip;
+      reqCurrentPage = 1;
+      applyRequestFilters();
+    }
+  }
+
+  function resetRequestFilters() {
+    const searchInput = document.getElementById("reqFilterSearch");
+    const methodSelect = document.getElementById("reqFilterMethod");
+    const statusSelect = document.getElementById("reqFilterStatusGroup");
+
+    if (searchInput) searchInput.value = "";
+    if (methodSelect) methodSelect.value = "all";
+    if (statusSelect) statusSelect.value = "all";
+
+    const allPill = document.querySelector('.req-status-pill[data-status="all"]');
+    if (allPill) {
+      selectStatusPill("all", allPill);
+    } else {
+      reqCurrentPage = 1;
+      applyRequestFilters();
+    }
+  }
+
+  function applyRequestFilters() {
+    const searchVal = (document.getElementById("reqFilterSearch")?.value || "").toLowerCase().trim();
+    const statusGroupVal = document.getElementById("reqFilterStatusGroup")?.value || "all";
+    const methodVal = document.getElementById("reqFilterMethod")?.value || "all";
+
+    const rows = document.querySelectorAll(".req-row-item");
+
+    rows.forEach(row => {
+      const uri = (row.getAttribute("data-uri") || "").toLowerCase();
+      const ip = (row.getAttribute("data-ip") || "").toLowerCase();
+      const method = row.getAttribute("data-method") || "";
+      const statusGroup = row.getAttribute("data-status-group") || "";
+
+      let matchSearch = true;
+      if (searchVal.length > 0) {
+        matchSearch = uri.includes(searchVal) || ip.includes(searchVal);
+      }
+
+      let matchStatus = true;
+      if (statusGroupVal !== "all") {
+        matchStatus = (statusGroup === statusGroupVal);
+      }
+
+      let matchMethod = true;
+      if (methodVal !== "all") {
+        matchMethod = (method === methodVal);
+      }
+
+      if (matchSearch && matchStatus && matchMethod) {
+        row.setAttribute("data-filtered", "true");
+      } else {
+        row.setAttribute("data-filtered", "false");
+        row.style.display = "none";
+      }
+    });
+
+    renderRequestPagination();
+  }
+
+  function renderRequestPagination() {
+    const rows = Array.from(document.querySelectorAll(".req-row-item"));
+    const visibleRows = rows.filter(r => r.getAttribute("data-filtered") !== "false");
+    const total = visibleRows.length;
+    const totalPages = Math.ceil(total / reqPageSize) || 1;
+
+    if (reqCurrentPage > totalPages) reqCurrentPage = totalPages;
+    if (reqCurrentPage < 1) reqCurrentPage = 1;
+
+    const startIdx = (reqCurrentPage - 1) * reqPageSize;
+    const endIdx = startIdx + reqPageSize;
+
+    visibleRows.forEach((row, idx) => {
+      if (idx >= startIdx && idx < endIdx) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
+
+    const countEl = document.getElementById("visibleReqCount");
+    if (countEl) {
+      countEl.textContent = total;
+    }
+
+    const pageInfoEl = document.getElementById("reqPageInfo");
+    if (pageInfoEl) {
+      if (total === 0) {
+        pageInfoEl.textContent = "Mostrando 0 de 0";
+      } else {
+        pageInfoEl.textContent = `Mostrando ${startIdx + 1} - ${Math.min(endIdx, total)} de ${total} peticiones`;
+      }
+    }
+
+    const noMatchesEl = document.getElementById("noMatchingReqsNotice");
+    if (noMatchesEl) {
+      if (total === 0 && rows.length > 0) {
+        noMatchesEl.classList.remove("d-none");
+      } else {
+        noMatchesEl.classList.add("d-none");
+      }
+    }
+
+    const container = document.getElementById("reqPaginationContainer");
+    if (!container) return;
+
+    if (totalPages <= 1) {
+      container.innerHTML = "";
+      return;
+    }
+
+    let html = `<ul class="pagination pagination-sm m-0">`;
+    html += `<li class="page-item ${reqCurrentPage === 1 ? 'disabled' : ''}">
+      <button type="button" class="page-link" onclick="setReqPage(${reqCurrentPage - 1})"><i class="bi bi-chevron-left"></i></button>
+    </li>`;
+
+    for (let p = 1; p <= totalPages; p++) {
+      if (totalPages > 7 && Math.abs(p - reqCurrentPage) > 2 && p !== 1 && p !== totalPages) {
+        if (p === 2 || p === totalPages - 1) {
+          html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        continue;
+      }
+      html += `<li class="page-item ${p === reqCurrentPage ? 'active' : ''}">
+        <button type="button" class="page-link" onclick="setReqPage(${p})">${p}</button>
+      </li>`;
+    }
+
+    html += `<li class="page-item ${reqCurrentPage === totalPages ? 'disabled' : ''}">
+      <button type="button" class="page-link" onclick="setReqPage(${reqCurrentPage + 1})"><i class="bi bi-chevron-right"></i></button>
+    </li>`;
+    html += `</ul>`;
+
+    container.innerHTML = html;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (document.querySelectorAll(".req-row-item").length > 0) {
+      applyRequestFilters();
+    }
+  });
+  </script>
 <?php endif; ?>
 
 <!-- ======================================================================= -->
@@ -343,17 +671,23 @@ $dbg = $debugData ?? [];
       </div>
     </div>
 
-    <!-- Barra de Busqueda y Contador -->
+    <!-- Barra de Busqueda, Selector de Limite y Contador -->
     <div class="row g-2 align-items-center mb-3">
-      <div class="col-md-6">
+      <div class="col-md-5">
         <div class="input-group input-group-sm">
           <span class="input-group-text bg-transparent"><i class="bi bi-search"></i></span>
           <input type="text" id="debugQuerySearch" class="form-control" placeholder="Buscar sentencia SQL, tabla o ID..." onkeyup="filterDebugTraces()">
         </div>
       </div>
-      <div class="col-md-6 text-end">
+      <div class="col-md-7 text-end d-flex align-items-center justify-content-end gap-2">
+        <label class="form-label text-muted small mb-0">Mostrar:</label>
+        <select id="sqlPageSizeSelect" class="form-select form-select-sm" style="width: auto;" onchange="changeSqlPageSize(this.value)">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
         <span class="badge bg-secondary-subtle text-secondary font-monospace px-3 py-2">
-          <i class="bi bi-hdd-network me-1"></i> <?= $dbg["counts"]["queries"] ?? 0 ?> <?= (($dbg["counts"]["queries"] ?? 0) === 1) ? "consulta capturada" : "consultas capturadas" ?>
+          <i class="bi bi-hdd-network me-1"></i> <span id="visibleSqlCount"><?= $dbg["counts"]["queries"] ?? 0 ?></span> <?= (($dbg["counts"]["queries"] ?? 0) === 1) ? "consulta" : "consultas" ?>
         </span>
       </div>
     </div>
@@ -415,20 +749,119 @@ $dbg = $debugData ?? [];
           </div>
         <?php endforeach; ?>
       </div>
+
+      <!-- Barra de Paginacion de Consultas SQL -->
+      <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-2 border-top gap-2">
+        <span class="text-muted small" id="sqlPageInfo">Mostrando 1 - 20 de <?= $dbg["counts"]["queries"] ?? 0 ?> consultas</span>
+        <div id="sqlPaginationContainer"></div>
+      </div>
     <?php endif; ?>
   </div>
 
   <script>
+  let sqlCurrentPage = 1;
+  let sqlPageSize = 20;
+
+  function changeSqlPageSize(newSize) {
+    sqlPageSize = parseInt(newSize, 10) || 20;
+    sqlCurrentPage = 1;
+    filterDebugTraces();
+  }
+
+  function setSqlPage(page) {
+    sqlCurrentPage = page;
+    renderSqlPagination();
+  }
+
   function filterDebugTraces() {
-    const q = document.getElementById("debugQuerySearch").value.toLowerCase();
-    const items = document.querySelectorAll(".debug-trace-item");
-    items.forEach(el => {
-      if (el.textContent.toLowerCase().includes(q)) {
-        el.style.display = "";
+    const q = (document.getElementById("debugQuerySearch")?.value || "").toLowerCase().trim();
+    const rows = document.querySelectorAll(".query-stmt-row");
+
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      if (q.length === 0 || text.includes(q)) {
+        row.setAttribute("data-filtered", "true");
       } else {
-        el.style.display = "none";
+        row.setAttribute("data-filtered", "false");
+        row.style.display = "none";
       }
     });
+
+    renderSqlPagination();
+  }
+
+  function renderSqlPagination() {
+    const rows = Array.from(document.querySelectorAll(".query-stmt-row"));
+    const visibleRows = rows.filter(r => r.getAttribute("data-filtered") !== "false");
+    const total = visibleRows.length;
+    const totalPages = Math.ceil(total / sqlPageSize) || 1;
+
+    if (sqlCurrentPage > totalPages) sqlCurrentPage = totalPages;
+    if (sqlCurrentPage < 1) sqlCurrentPage = 1;
+
+    const startIdx = (sqlCurrentPage - 1) * sqlPageSize;
+    const endIdx = startIdx + sqlPageSize;
+
+    visibleRows.forEach((row, idx) => {
+      if (idx >= startIdx && idx < endIdx) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
+
+    document.querySelectorAll(".debug-trace-item").forEach(card => {
+      const shownRows = Array.from(card.querySelectorAll(".query-stmt-row")).filter(r => r.style.display !== "none");
+      if (shownRows.length > 0) {
+        card.style.display = "";
+      } else {
+        card.style.display = "none";
+      }
+    });
+
+    const countEl = document.getElementById("visibleSqlCount");
+    if (countEl) countEl.textContent = total;
+
+    const pageInfoEl = document.getElementById("sqlPageInfo");
+    if (pageInfoEl) {
+      if (total === 0) {
+        pageInfoEl.textContent = "Mostrando 0 de 0";
+      } else {
+        pageInfoEl.textContent = `Mostrando ${startIdx + 1} - ${Math.min(endIdx, total)} de ${total} consultas`;
+      }
+    }
+
+    const container = document.getElementById("sqlPaginationContainer");
+    if (!container) return;
+
+    if (totalPages <= 1) {
+      container.innerHTML = "";
+      return;
+    }
+
+    let html = `<ul class="pagination pagination-sm m-0">`;
+    html += `<li class="page-item ${sqlCurrentPage === 1 ? 'disabled' : ''}">
+      <button type="button" class="page-link" onclick="setSqlPage(${sqlCurrentPage - 1})"><i class="bi bi-chevron-left"></i></button>
+    </li>`;
+
+    for (let p = 1; p <= totalPages; p++) {
+      if (totalPages > 7 && Math.abs(p - sqlCurrentPage) > 2 && p !== 1 && p !== totalPages) {
+        if (p === 2 || p === totalPages - 1) {
+          html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        continue;
+      }
+      html += `<li class="page-item ${p === sqlCurrentPage ? 'active' : ''}">
+        <button type="button" class="page-link" onclick="setSqlPage(${p})">${p}</button>
+      </li>`;
+    }
+
+    html += `<li class="page-item ${sqlCurrentPage === totalPages ? 'disabled' : ''}">
+      <button type="button" class="page-link" onclick="setSqlPage(${sqlCurrentPage + 1})"><i class="bi bi-chevron-right"></i></button>
+    </li>`;
+    html += `</ul>`;
+
+    container.innerHTML = html;
   }
 
   function copySqlStatement(btn) {
@@ -444,6 +877,12 @@ $dbg = $debugData ?? [];
       });
     }
   }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (document.querySelectorAll(".query-stmt-row").length > 0) {
+      filterDebugTraces();
+    }
+  });
   </script>
 <?php endif; ?>
 
