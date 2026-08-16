@@ -96,7 +96,30 @@ class Engine {
             ];
         }
 
-        if ($binary === "pirulu-php" && $action === "versions") {
+        if ($binary === "pirulu-php") {
+            if ($action === "get-ini") {
+                $ver = $args[1] ?? "8.2";
+                $sampleIni = ";;;;;;;;;;;;;;;;;;;\n; About php.ini   ;\n;;;;;;;;;;;;;;;;;;;\n; PHP's initialization file, generally called php.ini, is responsible for\n; configuring many of the aspects of PHP's behavior.\n\n[PHP]\nmax_execution_time = 60\nmax_input_time = 60\nmemory_limit = 128M\nerror_reporting = E_ALL & ~E_DEPRECATED\ndisplay_errors = Off\npost_max_size = 200M\nupload_max_filesize = 200M\n";
+                return [
+                    "status"              => "success",
+                    "version"             => $ver,
+                    "ini_file"            => "/etc/php/{$ver}/fpm/php.ini",
+                    "max_execution_time"  => "60",
+                    "max_input_time"      => "60",
+                    "memory_limit"        => "128M",
+                    "error_reporting"     => "E_ALL & ~E_DEPRECATED",
+                    "display_errors"      => "Off",
+                    "post_max_size"       => "200M",
+                    "upload_max_filesize" => "200M",
+                    "raw_base64"          => base64_encode($sampleIni)
+                ];
+            }
+            if ($action === "set-ini" || $action === "save-raw-ini") {
+                return [
+                    "status"  => "success",
+                    "message" => "Configuración de PHP actualizada y servicio reiniciado exitosamente"
+                ];
+            }
             return [
                 "status" => "success",
                 "versions" => [

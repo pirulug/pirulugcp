@@ -149,6 +149,9 @@ $router->post("/files/composer", [FileManagerController::class, "composerAction"
 
 // Rutas de PHP-FPM Multi-Version
 $router->get("/php", [PhpController::class, "index"]);
+$router->get("/php/config/{version}", [PhpController::class, "config"]);
+$router->post("/php/config/{version}/save", [PhpController::class, "saveConfig"]);
+$router->post("/php/config/{version}/raw", [PhpController::class, "saveRawIni"]);
 $router->get("/php/restart/{version}", [PhpController::class, "restart"]);
 
 // Rutas de Bases de Datos (MariaDB) y phpMyAdmin Auto-Login

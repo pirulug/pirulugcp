@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gestor de PHP-FPM Multi-Version para PiruluGCP
+# Gestor de PHP-FPM Multi-Version y Configuracion php.ini para PiruluGCP
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -8,126 +8,269 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 check_root
 
 ACTION="$1"
+PARAM1="$2"
+PARAM2="$3"
+PARAM3="$4"
+PARAM4="$5"
+PARAM5="$6"
+PARAM6="$7"
+PARAM7="$8"
+PARAM8="$9"
 
 usage() {
-    echo "Uso: pirulu-php <accion> [argumentos]"
-    echo "Acciones:"
-    echo "  versions                                                            Listar versiones de PHP instaladas (JSON)"
-    echo "  pool-add <user> <domain> <version> <doc_root> <socket> <web_root>  Crear pool de PHP-FPM"
-    echo "  pool-del <user> <domain> [version]                                  Eliminar pool de PHP-FPM"
-    echo "  restart <version>                                                   Reiniciar servicio PHP-FPM"
+    echo "Uso: pirulu-php <versions|pool-add|pool-del|restart|get-ini|set-ini|save-raw-ini> [argumentos]"
     exit 1
 }
 
 [ -z "$ACTION" ] && usage
 
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
 TPL_FILE="${PIRULU_ROOT}/engine/templates/php-fpm/pool.conf.tpl"
+
+php_versions_list() {
+    IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
+    local json_list="["
+    local first=1
+    for ver in "${VERSIONS[@]}"; do
+        local installed="false"
+        local status="inactive"
+        if command -v "php${ver}" >/dev/null 2>&1 || [ -d "/etc/php/${ver}" ]; then
+            installed="true"
+            if systemctl is-active --quiet "php${ver}-fpm" 2>/dev/null; then
+                status="active"
+            fi
+        fi
+        if [ $first -eq 0 ]; then
+            json_list="${json_list},"
+        fi
+        json_list="${json_list}{\"version\":\"${ver}\",\"installed\":${installed},\"status\":\"${status}\"}"
+        first=0
+    done
+    json_list="${json_list}]"
+    echo "{\"status\":\"success\",\"versions\":${json_list}}"
+}
+
+php_pool_add() {
+    local user="$1"
+    local domain="$2"
+    local version="$3"
+    local doc_root="$4"
+    local socket="$5"
+    local web_root="${6:-${DEFAULT_USER_HOME}/${user}/web/${domain}}"
+
+    [ -z "$user" ] || [ -z "$domain" ] || [ -z "$version" ] || [ -z "$doc_root" ] || [ -z "$socket" ] && usage
+
+    local pool_name="${user}_${domain}"
+    local pool_dir="/etc/php/${version}/fpm/pool.d"
+    local pool_file="${pool_dir}/${pool_name}.conf"
+
+    local user_tmp="${DEFAULT_USER_HOME}/${user}/tmp"
+    mkdir -p "$user_tmp"
+    chown "${user}:${user}" "$user_tmp"
+    chmod 750 "$user_tmp"
+
+    mkdir -p "$pool_dir"
+
+    sed -e "s|%POOL_NAME%|${pool_name}|g" \
+        -e "s|%USER%|${user}|g" \
+        -e "s|%WEB_ROOT%|${web_root}|g" \
+        -e "s|%DOC_ROOT%|${doc_root}|g" \
+        -e "s|%FPM_SOCKET%|${socket}|g" \
+        "$TPL_FILE" > "$pool_file"
+
+    systemctl restart "php${version}-fpm" >/dev/null 2>&1 || systemctl reload "php${version}-fpm" >/dev/null 2>&1
+
+    local wait_count=0
+    local timeout_sec=15
+    while [ ! -S "$socket" ] && [ "$wait_count" -lt "$timeout_sec" ]; do
+        sleep 1
+        wait_count=$((wait_count + 1))
+    done
+
+    if [ ! -S "$socket" ]; then
+        log_error "Timeout: el socket $socket no aparecio en ${timeout_sec}s tras restart de php${version}-fpm"
+    else
+        log_info "Socket $socket listo en ${wait_count}s"
+    fi
+
+    log_info "Pool PHP-FPM $pool_name creado para PHP $version"
+    echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM creado para PHP $version\"}"
+}
+
+php_pool_del() {
+    local user="$1"
+    local domain="$2"
+    local version="$3"
+
+    [ -z "$user" ] || [ -z "$domain" ] && usage
+    local pool_name="${user}_${domain}"
+
+    IFS="," read -r -a VERSIONS <<< "${AVAILABLE_PHP_VERSIONS:-7.4,8.0,8.1,8.2,8.3,8.4,8.5}"
+    for ver in "${VERSIONS[@]}"; do
+        local pool_file="/etc/php/${ver}/fpm/pool.d/${pool_name}.conf"
+        if [ -f "$pool_file" ]; then
+            rm -f "$pool_file"
+            systemctl restart "php${ver}-fpm" >/dev/null 2>&1 || systemctl reload "php${ver}-fpm" >/dev/null 2>&1
+        fi
+    done
+
+    log_info "Pool PHP-FPM $pool_name eliminado"
+    echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM eliminado\"}"
+}
+
+php_restart() {
+    local version="$1"
+    [ -z "$version" ] && usage
+    systemctl restart "php${version}-fpm"
+    echo "{\"status\":\"success\",\"message\":\"PHP-FPM $version reiniciado\"}"
+}
+
+get_ini_val() {
+    local file="$1"
+    local key="$2"
+    local def="$3"
+    if [ -f "$file" ]; then
+        local line
+        line=$(grep -E "^\s*${key}\s*=" "$file" | tail -n 1 | sed -E "s/^\s*${key}\s*=\s*//" | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' -e 's/^"//' -e 's/"$//')
+        if [ -n "$line" ]; then
+            echo "$line"
+            return
+        fi
+    fi
+    echo "$def"
+}
+
+set_ini_val() {
+    local file="$1"
+    local key="$2"
+    local val="$3"
+
+    if [ ! -f "$file" ]; then
+        return
+    fi
+
+    if grep -q -E "^\s*;?\s*${key}\s*=" "$file"; then
+        # Reemplazar existente
+        sed -i -E "s/^\s*;?\s*${key}\s*=.*/${key} = ${val}/" "$file"
+    else
+        # Agregar al final de [PHP]
+        sed -i "/^\[PHP\]/a ${key} = ${val}" "$file" 2>/dev/null || echo "${key} = ${val}" >> "$file"
+    fi
+}
+
+php_get_ini() {
+    local version="$1"
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+
+    local ini_file="/etc/php/${version}/fpm/php.ini"
+    if [ ! -f "$ini_file" ]; then
+        ini_file="/etc/php/${version}/cli/php.ini"
+    fi
+
+    if [ ! -f "$ini_file" ]; then
+        exit_error "Archivo php.ini no encontrado para PHP $version"
+    fi
+
+    local max_exec
+    max_exec=$(get_ini_val "$ini_file" "max_execution_time" "30")
+    local max_input
+    max_input=$(get_ini_val "$ini_file" "max_input_time" "60")
+    local mem_limit
+    mem_limit=$(get_ini_val "$ini_file" "memory_limit" "128M")
+    local err_rep
+    err_rep=$(get_ini_val "$ini_file" "error_reporting" "E_ALL & ~E_DEPRECATED & ~E_STRICT")
+    local disp_err
+    disp_err=$(get_ini_val "$ini_file" "display_errors" "Off")
+    local post_max
+    post_max=$(get_ini_val "$ini_file" "post_max_size" "8M")
+    local upload_max
+    upload_max=$(get_ini_val "$ini_file" "upload_max_filesize" "2M")
+
+    local b64_content
+    b64_content=$(base64 -w 0 "$ini_file" 2>/dev/null || base64 "$ini_file" | tr -d '\r\n')
+
+    echo "{\"status\":\"success\",\"version\":\"$version\",\"ini_file\":\"$ini_file\",\"max_execution_time\":\"$max_exec\",\"max_input_time\":\"$max_input\",\"memory_limit\":\"$mem_limit\",\"error_reporting\":\"$(json_escape "$err_rep")\",\"display_errors\":\"$disp_err\",\"post_max_size\":\"$post_max\",\"upload_max_filesize\":\"$upload_max\",\"raw_base64\":\"$b64_content\"}"
+}
+
+php_set_ini() {
+    local version="$1"
+    local max_exec="$2"
+    local max_input="$3"
+    local mem_limit="$4"
+    local err_rep="$5"
+    local disp_err="$6"
+    local post_max="$7"
+    local upload_max="$8"
+
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+
+    local ini_file="/etc/php/${version}/fpm/php.ini"
+    [ ! -f "$ini_file" ] && ini_file="/etc/php/${version}/cli/php.ini"
+    [ ! -f "$ini_file" ] && exit_error "Archivo php.ini no encontrado para PHP $version"
+
+    log_info "Actualizando directivas de PHP $version en $ini_file..."
+
+    [ -n "$max_exec" ] && set_ini_val "$ini_file" "max_execution_time" "$max_exec"
+    [ -n "$max_input" ] && set_ini_val "$ini_file" "max_input_time" "$max_input"
+    [ -n "$mem_limit" ] && set_ini_val "$ini_file" "memory_limit" "$mem_limit"
+    [ -n "$err_rep" ] && set_ini_val "$ini_file" "error_reporting" "$err_rep"
+    [ -n "$disp_err" ] && set_ini_val "$ini_file" "display_errors" "$disp_err"
+    [ -n "$post_max" ] && set_ini_val "$ini_file" "post_max_size" "$post_max"
+    [ -n "$upload_max" ] && set_ini_val "$ini_file" "upload_max_filesize" "$upload_max"
+
+    systemctl restart "php${version}-fpm" >/dev/null 2>&1 || true
+
+    echo "{\"status\":\"success\",\"message\":\"Configuracion de PHP $version actualizada y servicio reiniciado exitosamente\"}"
+}
+
+php_save_raw_ini() {
+    local version="$1"
+    local b64_content="$2"
+
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+
+    local ini_file="/etc/php/${version}/fpm/php.ini"
+    [ ! -f "$ini_file" ] && ini_file="/etc/php/${version}/cli/php.ini"
+    [ ! -f "$ini_file" ] && exit_error "Archivo php.ini no encontrado para PHP $version"
+
+    log_info "Guardando archivo php.ini completo para PHP $version..."
+
+    if [ -n "$b64_content" ]; then
+        echo "$b64_content" | base64 -d > "$ini_file"
+    else
+        cat > "$ini_file"
+    fi
+
+    systemctl restart "php${version}-fpm" >/dev/null 2>&1 || true
+
+    echo "{\"status\":\"success\",\"message\":\"Archivo php.ini guardado y PHP $version reiniciado exitosamente\"}"
+}
 
 case "$ACTION" in
     versions)
-        IFS="," read -r -a VERSIONS <<< "$AVAILABLE_PHP_VERSIONS"
-        JSON_LIST="["
-        FIRST=1
-        for ver in "${VERSIONS[@]}"; do
-            INSTALLED="false"
-            STATUS="inactive"
-            if command -v "php${ver}" >/dev/null 2>&1 || [ -d "/etc/php/${ver}" ]; then
-                INSTALLED="true"
-                if systemctl is-active --quiet "php${ver}-fpm"; then
-                    STATUS="active"
-                fi
-            fi
-            if [ $FIRST -eq 0 ]; then
-                JSON_LIST="${JSON_LIST},"
-            fi
-            JSON_LIST="${JSON_LIST}{\"version\":\"${ver}\",\"installed\":${INSTALLED},\"status\":\"${STATUS}\"}"
-            FIRST=0
-        done
-        JSON_LIST="${JSON_LIST}]"
-        echo "{\"status\":\"success\",\"versions\":${JSON_LIST}}"
+        php_versions_list
         ;;
-
     pool-add)
-        USER="$2"
-        DOMAIN="$3"
-        VERSION="$4"
-        DOC_ROOT="$5"
-        SOCKET="$6"
-        # WEB_ROOT es el directorio raiz del dominio (padre del doc_root)
-        # Se usa en open_basedir para permitir acceso al dominio completo
-        WEB_ROOT="${7:-${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}}"
-
-        [ -z "$USER" ] || [ -z "$DOMAIN" ] || [ -z "$VERSION" ] || [ -z "$DOC_ROOT" ] || [ -z "$SOCKET" ] && usage
-
-        POOL_NAME="${USER}_${DOMAIN}"
-        POOL_DIR="/etc/php/${VERSION}/fpm/pool.d"
-        POOL_FILE="${POOL_DIR}/${POOL_NAME}.conf"
-
-        # Asegurar directorio temporal exclusivo del usuario
-        USER_TMP="${DEFAULT_USER_HOME}/${USER}/tmp"
-        mkdir -p "$USER_TMP"
-        chown "${USER}:${USER}" "$USER_TMP"
-        chmod 750 "$USER_TMP"
-
-        mkdir -p "$POOL_DIR"
-
-        sed -e "s|%POOL_NAME%|${POOL_NAME}|g" \
-            -e "s|%USER%|${USER}|g" \
-            -e "s|%WEB_ROOT%|${WEB_ROOT}|g" \
-            -e "s|%DOC_ROOT%|${DOC_ROOT}|g" \
-            -e "s|%FPM_SOCKET%|${SOCKET}|g" \
-            "$TPL_FILE" > "$POOL_FILE"
-
-        systemctl restart "php${VERSION}-fpm" > /dev/null 2>&1 || systemctl reload "php${VERSION}-fpm" > /dev/null 2>&1
-
-        # Esperar a que el socket este disponible antes de retornar.
-        # Sin esta espera, reload_servers recargaria Apache antes de que el
-        # socket exista, manteniendo el pool anterior activo.
-        WAIT=0
-        TIMEOUT=15
-        while [ ! -S "$SOCKET" ] && [ "$WAIT" -lt "$TIMEOUT" ]; do
-            sleep 1
-            WAIT=$((WAIT + 1))
-        done
-
-        if [ ! -S "$SOCKET" ]; then
-            log_error "Timeout: el socket $SOCKET no aparecio en ${TIMEOUT}s tras restart de php${VERSION}-fpm"
-        else
-            log_info "Socket $SOCKET listo en ${WAIT}s"
-        fi
-
-        log_info "Pool PHP-FPM $POOL_NAME creado para PHP $VERSION"
-        echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM creado para PHP $VERSION\"}"
+        php_pool_add "$PARAM1" "$PARAM2" "$PARAM3" "$PARAM4" "$PARAM5" "$PARAM6"
         ;;
-
     pool-del)
-        USER="$2"
-        DOMAIN="$3"
-        VERSION="$4"
-
-        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
-        POOL_NAME="${USER}_${DOMAIN}"
-
-        IFS="," read -r -a VERSIONS <<< "${AVAILABLE_PHP_VERSIONS:-7.4,8.0,8.1,8.2,8.3,8.4,8.5}"
-        for ver in "${VERSIONS[@]}"; do
-            POOL_FILE="/etc/php/${ver}/fpm/pool.d/${POOL_NAME}.conf"
-            if [ -f "$POOL_FILE" ]; then
-                rm -f "$POOL_FILE"
-                systemctl restart "php${ver}-fpm" > /dev/null 2>&1 || systemctl reload "php${ver}-fpm" > /dev/null 2>&1
-            fi
-        done
-
-        log_info "Pool PHP-FPM $POOL_NAME eliminado"
-        echo "{\"status\":\"success\",\"message\":\"Pool PHP-FPM eliminado\"}"
+        php_pool_del "$PARAM1" "$PARAM2" "$PARAM3"
         ;;
-
     restart)
-        VERSION="$2"
-        [ -z "$VERSION" ] && usage
-        systemctl restart "php${VERSION}-fpm"
-        echo "{\"status\":\"success\",\"message\":\"PHP-FPM $VERSION reiniciado\"}"
+        php_restart "$PARAM1"
         ;;
-
+    get-ini)
+        php_get_ini "$PARAM1"
+        ;;
+    set-ini)
+        php_set_ini "$PARAM1" "$PARAM2" "$PARAM3" "$PARAM4" "$PARAM5" "$PARAM6" "$PARAM7" "$PARAM8"
+        ;;
+    save-raw-ini)
+        php_save_raw_ini "$PARAM1" "$PARAM2"
+        ;;
     *)
         usage
         ;;

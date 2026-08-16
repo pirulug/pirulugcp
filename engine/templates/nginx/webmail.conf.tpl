@@ -1,7 +1,9 @@
-# VirtualHost de Nginx para Webmail de %DOMAIN% en HTTP (Puerto 80)
+# VirtualHost de Nginx para Webmail de %DOMAIN% en HTTP (Puerto 80 y 8083)
 server {
     listen 80;
     listen [::]:80;
+    listen 8083;
+    listen [::]:8083;
     server_name webmail.%DOMAIN%;
 
     root /var/lib/roundcube/public_html;
