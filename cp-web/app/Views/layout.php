@@ -70,5 +70,55 @@ $flash = View::getFlash();
 
     <!-- Scripts -->
     <script src="/assets/js/piruadmin.js"></script>
+
+    <!-- Global Helper: Clipboard Copy con soporte para HTTP y HTTPS -->
+    <script>
+        function copyToClipboard(target, message) {
+            let text = "";
+            const el = typeof target === "string" ? document.getElementById(target) : target;
+            if (el && (el.value !== undefined || el.textContent !== undefined)) {
+                text = el.value !== undefined ? el.value : el.textContent;
+            } else if (typeof target === "string") {
+                text = target;
+            }
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function () {
+                    if (message) alert(message);
+                }).catch(function () {
+                    fallbackCopy(text, el, message);
+                });
+            } else {
+                fallbackCopy(text, el, message);
+            }
+        }
+
+        function fallbackCopy(text, el, message) {
+            if (el && typeof el.select === "function") {
+                el.focus();
+                el.select();
+                try {
+                    document.execCommand("copy");
+                    if (message) alert(message);
+                    return;
+                } catch (e) {}
+            }
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.left = "-9999px";
+            textarea.style.top = "0";
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            try {
+                document.execCommand("copy");
+                if (message) alert(message);
+            } catch (err) {
+                prompt("Copia el siguiente texto:", text);
+            }
+            document.body.removeChild(textarea);
+        }
+    </script>
 </body>
 </html>

@@ -311,7 +311,7 @@
         <label class="form-label small">URL del Webhook del Panel:</label>
         <div class="input-group input-group-sm mb-3">
           <input type="text" class="form-control font-monospace" id="panel_webhook_url" value="<?= $webhookUrl ?>" readonly>
-          <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('panel_webhook_url').value); alert('URL de Webhook copiada');">
+          <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('panel_webhook_url', 'URL de Webhook copiada al portapapeles');">
             <i class="bi bi-clipboard"></i>
           </button>
         </div>
@@ -414,7 +414,7 @@
         <textarea class="form-control font-monospace small" id="panel_ssh_key_text" rows="3" readonly><?= $serverConfig["public_key"] ?></textarea>
       </div>
 
-      <button type="button" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold w-100 mb-3" onclick="navigator.clipboard.writeText(document.getElementById('panel_ssh_key_text').value); alert('Clave SSH publica copiada al portapapeles.');">
+      <button type="button" class="btn btn-sm btn-outline-secondary text-uppercase fw-bold w-100 mb-3" onclick="copyToClipboard('panel_ssh_key_text', 'Clave SSH publica copiada al portapapeles.');">
         <i class="bi bi-clipboard me-1"></i> Copiar Clave SSH Publica
       </button>
 

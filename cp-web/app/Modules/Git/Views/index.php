@@ -153,7 +153,7 @@ $domainId   = (int)$domain["id"];
                 <label class="form-label small">URL del Webhook de GitHub:</label>
                 <div class="input-group input-group-sm mb-3">
                     <input type="text" class="form-control font-monospace" id="webhook_url_input" value="<?= $webhookUrl ?>" readonly>
-                    <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('webhook_url_input').value); alert('URL de Webhook copiada');">
+                    <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('webhook_url_input', 'URL de Webhook copiada al portapapeles');">
                         <i class="bi bi-clipboard"></i>
                     </button>
                 </div>
@@ -276,7 +276,7 @@ $domainId   = (int)$domain["id"];
             </div>
 
             <div class="d-grid mb-3">
-                <button type="button" class="btn btn-sm btn-outline-primary text-uppercase fw-bold" onclick="navigator.clipboard.writeText(document.getElementById('ssh_public_key_box').value); alert('Clave SSH copiada al portapapeles');">
+                <button type="button" class="btn btn-sm btn-outline-primary text-uppercase fw-bold" onclick="copyToClipboard('ssh_public_key_box', 'Clave SSH copiada al portapapeles');">
                     <i class="bi bi-clipboard me-1"></i> Copiar Clave Publica SSH
                 </button>
             </div>
