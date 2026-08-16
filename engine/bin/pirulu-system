@@ -46,7 +46,18 @@ case "$ACTION" in
         done
         PHP_JSON="${PHP_JSON}]"
 
-        echo "{\"status\":\"success\",\"services\":{\"nginx\":\"${NGINX_STATUS}\",\"apache\":\"${APACHE_STATUS}\",\"mariadb\":\"${MARIADB_STATUS}\",\"php_fpm\":${PHP_JSON}}}"
+        F2B_STATUS="not-found"
+        if command -v fail2ban-client > /dev/null 2>&1; then
+            if systemctl is-active --quiet fail2ban 2>/dev/null; then
+                F2B_STATUS="active"
+            elif systemctl is-enabled --quiet fail2ban 2>/dev/null; then
+                F2B_STATUS="inactive"
+            else
+                F2B_STATUS="inactive"
+            fi
+        fi
+
+        echo "{\"status\":\"success\",\"services\":{\"nginx\":\"${NGINX_STATUS}\",\"apache\":\"${APACHE_STATUS}\",\"mariadb\":\"${MARIADB_STATUS}\",\"fail2ban\":\"${F2B_STATUS}\",\"php_fpm\":${PHP_JSON}}}"
         ;;
 
     metrics)

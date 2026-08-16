@@ -68,6 +68,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
                 </a>
             </li>
 
+            <li class="sidebar-item <?= (strpos($currentUri, "/firewall") === 0) ? "active" : "" ?>">
+                <a class="sidebar-link" href="/firewall">
+                    <i class="align-middle bi bi-shield-lock"></i>
+                    <span class="align-middle">Firewall</span>
+                </a>
+            </li>
+
             <li class="sidebar-item <?= (strpos($currentUri, "/logs") === 0) ? "active" : "" ?>">
                 <a class="sidebar-link" href="/logs">
                     <i class="align-middle bi bi-journal-text"></i>

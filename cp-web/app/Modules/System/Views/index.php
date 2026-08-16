@@ -108,6 +108,65 @@
                     </td>
                 </tr>
 
+                <!-- Fail2Ban -->
+                <?php $f2bStatus = $services["fail2ban"] ?? "not-found"; ?>
+                <?php if ($f2bStatus !== "not-found"): ?>
+                <tr>
+                    <td class="ps-3 fw-bold">
+                        <span class="d-inline-flex align-items-center">
+                            <i class="bi bi-shield-lock me-2 text-danger"></i>
+                            <code>fail2ban</code>
+                        </span>
+                    </td>
+                    <td>Proteccion contra Ataques de Fuerza Bruta</td>
+                    <td>
+                        <span class="badge <?= ($f2bStatus === "active") ? "bg-success-subtle text-success border border-success-subtle" : "bg-danger-subtle text-danger border border-danger-subtle" ?>">
+                            <?= strtoupper($f2bStatus) ?>
+                        </span>
+                    </td>
+                    <td class="text-end pe-3 text-nowrap">
+                        <div class="d-flex justify-content-end gap-1">
+                            <a href="/firewall" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap">
+                                <i class="bi bi-shield-exclamation me-1"></i> Gestionar
+                            </a>
+                            <form action="/system/action" method="POST" class="d-inline m-0">
+                                <input type="hidden" name="service" value="fail2ban">
+                                <button type="submit" name="action" value="restart" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap">
+                                    <i class="bi bi-arrow-clockwise me-1"></i> Reiniciar
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                <?php endif; ?>
+
+                <!-- IPTables -->
+                <tr>
+                    <td class="ps-3 fw-bold">
+                        <span class="d-inline-flex align-items-center">
+                            <i class="bi bi-diagram-3 me-2 text-secondary"></i>
+                            <code>iptables</code>
+                        </span>
+                    </td>
+                    <td>Firewall de Red a Nivel de Kernel</td>
+                    <td>
+                        <?php
+                        $iptCmd = shell_exec("which iptables 2>/dev/null");
+                        $iptOk  = !empty(trim($iptCmd ?? ""));
+                        ?>
+                        <span class="badge <?= $iptOk ? "bg-success-subtle text-success border border-success-subtle" : "bg-secondary-subtle text-secondary border border-secondary-subtle" ?>">
+                            <?= $iptOk ? "DISPONIBLE" : "NO DISPONIBLE" ?>
+                        </span>
+                    </td>
+                    <td class="text-end pe-3 text-nowrap">
+                        <div class="d-flex justify-content-end gap-1">
+                            <a href="/firewall" class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap">
+                                <i class="bi bi-diagram-3 me-1"></i> Gestionar
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+
                 <!-- PHP-FPM Services -->
                 <?php if (!empty($services["php_fpm"])): ?>
                     <?php foreach ($services["php_fpm"] as $phpSvc): ?>

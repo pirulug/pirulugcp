@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# Gestor de Firewall (Fail2Ban + IPTables) para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+
+usage() {
+    echo "Uso: pirulu-firewall <accion> [argumentos]"
+    echo "Acciones:"
+    echo "  status              Estado general de fail2ban e iptables (JSON)"
+    echo "  f2b-jails           Listar jails de fail2ban con IPs baneadas (JSON)"
+    echo "  f2b-ban   <ip>      Banear IP manualmente en fail2ban (jail sshd)"
+    echo "  f2b-unban <ip>      Desbanear IP en todos los jails de fail2ban"
+    echo "  ipt-list            Listar reglas DROP activas en iptables INPUT (JSON)"
+    echo "  ipt-ban   <ip>      Agregar regla DROP para una IP en iptables"
+    echo "  ipt-unban <ip>      Eliminar regla DROP para una IP en iptables"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+# -----------------------------------------------------------------------------
+# HELPERS
+# -----------------------------------------------------------------------------
+
+f2b_available() {
+    command -v fail2ban-client > /dev/null 2>&1
+}
+
+ipt_available() {
+    command -v iptables > /dev/null 2>&1
+}
+
+get_f2b_status() {
+    if f2b_available; then
+        if systemctl is-active --quiet fail2ban 2>/dev/null; then
+            echo "active"
+        elif systemctl is-enabled --quiet fail2ban 2>/dev/null; then
+            echo "inactive"
+        else
+            echo "inactive"
+        fi
+    else
+        echo "not-found"
+    fi
+}
+
+# Escapa una cadena para incluirla en JSON
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+case "$ACTION" in
+    status)
+        F2B_STATUS=$(get_f2b_status)
+        IPT_AVAILABLE="false"
+        ipt_available && IPT_AVAILABLE="true"
+
+        # Contar IPs baneadas en todos los jails
+        BANNED_COUNT=0
+        if [ "$F2B_STATUS" = "active" ]; then
+            BANNED_COUNT=$(fail2ban-client status 2>/dev/null \
+                | grep "Jail list:" \
+                | sed 's/.*Jail list://; s/,//g' \
+                | tr ' ' '\n' \
+                | grep -v '^$' \
+                | while read -r jail; do
+                    fail2ban-client status "$jail" 2>/dev/null \
+                        | grep "Currently banned:" \
+                        | awk '{print $NF}'
+                done \
+                | awk '{s+=$1} END {print s+0}')
+        fi
+
+        # Contar reglas DROP en iptables INPUT
+        IPT_DROP_COUNT=0
+        if ipt_available; then
+            IPT_DROP_COUNT=$(iptables -n -L INPUT 2>/dev/null \
+                | grep -c "^DROP" || true)
+        fi
+
+        echo "{\"status\":\"success\",\"fail2ban\":{\"status\":\"${F2B_STATUS}\",\"banned_count\":${BANNED_COUNT:-0}},\"iptables\":{\"available\":${IPT_AVAILABLE},\"drop_rules\":${IPT_DROP_COUNT}}}"
+        ;;
+
+    f2b-jails)
+        if ! f2b_available || [ "$(get_f2b_status)" != "active" ]; then
+            echo "{\"status\":\"error\",\"message\":\"fail2ban no esta activo o no esta instalado\",\"jails\":[]}"
+            exit 0
+        fi
+
+        JAILS=$(fail2ban-client status 2>/dev/null \
+            | grep "Jail list:" \
+            | sed 's/.*Jail list://; s/[[:space:]]//g')
+
+        JSON="["
+        FIRST=1
+        IFS="," read -r -a JAIL_ARR <<< "$JAILS"
+        for jail in "${JAIL_ARR[@]}"; do
+            [ -z "$jail" ] && continue
+
+            JAIL_STATUS=$(fail2ban-client status "$jail" 2>/dev/null)
+            CURRENTLY_BANNED=$(echo "$JAIL_STATUS" | grep "Currently banned:" | awk '{print $NF}')
+            TOTAL_BANNED=$(echo "$JAIL_STATUS" | grep "Total banned:" | awk '{print $NF}')
+            BANNED_IPS=$(echo "$JAIL_STATUS" | grep "Banned IP list:" | sed 's/.*Banned IP list://' | sed 's/^[[:space:]]*//')
+
+            # Convertir lista de IPs a array JSON
+            IP_JSON="["
+            IP_FIRST=1
+            for ip in $BANNED_IPS; do
+                [ -z "$ip" ] && continue
+                [ $IP_FIRST -eq 0 ] && IP_JSON="${IP_JSON},"
+                IP_JSON="${IP_JSON}\"${ip}\""
+                IP_FIRST=0
+            done
+            IP_JSON="${IP_JSON}]"
+
+            [ $FIRST -eq 0 ] && JSON="${JSON},"
+            JSON="${JSON}{\"jail\":\"${jail}\",\"currently_banned\":${CURRENTLY_BANNED:-0},\"total_banned\":${TOTAL_BANNED:-0},\"banned_ips\":${IP_JSON}}"
+            FIRST=0
+        done
+        JSON="${JSON}]"
+
+        echo "{\"status\":\"success\",\"jails\":${JSON}}"
+        ;;
+
+    f2b-ban)
+        IP="$2"
+        [ -z "$IP" ] && usage
+
+        if ! f2b_available; then
+            echo "{\"status\":\"error\",\"message\":\"fail2ban no esta instalado\"}"
+            exit 1
+        fi
+
+        # Intentar banear en sshd primero, luego en nginx-http-auth si existe
+        RESULT=$(fail2ban-client set sshd banip "$IP" 2>&1)
+        if [ $? -eq 0 ]; then
+            log_info "IP $IP baneada en fail2ban (jail: sshd)"
+            echo "{\"status\":\"success\",\"message\":\"IP ${IP} baneada en fail2ban (jail: sshd)\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"No se pudo banear ${IP}: $(json_escape "$RESULT")\"}"
+        fi
+        ;;
+
+    f2b-unban)
+        IP="$2"
+        [ -z "$IP" ] && usage
+
+        if ! f2b_available; then
+            echo "{\"status\":\"error\",\"message\":\"fail2ban no esta instalado\"}"
+            exit 1
+        fi
+
+        fail2ban-client unban "$IP" > /dev/null 2>&1
+        log_info "IP $IP desbaneada en fail2ban (todos los jails)"
+        echo "{\"status\":\"success\",\"message\":\"IP ${IP} desbaneada en todos los jails de fail2ban\"}"
+        ;;
+
+    ipt-list)
+        if ! ipt_available; then
+            echo "{\"status\":\"error\",\"message\":\"iptables no esta disponible\",\"rules\":[]}"
+            exit 0
+        fi
+
+        JSON="["
+        FIRST=1
+        while IFS= read -r line; do
+            # Extraer IP origen de las reglas DROP
+            IP=$(echo "$line" | awk '{print $4}')
+            [ -z "$IP" ] || [ "$IP" = "anywhere" ] && continue
+
+            [ $FIRST -eq 0 ] && JSON="${JSON},"
+            JSON="${JSON}\"${IP}\""
+            FIRST=0
+        done < <(iptables -n -L INPUT 2>/dev/null | grep "^DROP")
+
+        JSON="${JSON}]"
+        echo "{\"status\":\"success\",\"rules\":${JSON}}"
+        ;;
+
+    ipt-ban)
+        IP="$2"
+        [ -z "$IP" ] && usage
+
+        if ! ipt_available; then
+            echo "{\"status\":\"error\",\"message\":\"iptables no esta disponible\"}"
+            exit 1
+        fi
+
+        # Verificar si la regla ya existe
+        if iptables -n -L INPUT 2>/dev/null | grep -q "DROP.*${IP}"; then
+            echo "{\"status\":\"error\",\"message\":\"La IP ${IP} ya tiene una regla DROP en iptables\"}"
+            exit 0
+        fi
+
+        iptables -I INPUT -s "$IP" -j DROP
+        log_info "Regla DROP agregada en iptables para IP $IP"
+        echo "{\"status\":\"success\",\"message\":\"IP ${IP} bloqueada en iptables (INPUT DROP)\"}"
+        ;;
+
+    ipt-unban)
+        IP="$2"
+        [ -z "$IP" ] && usage
+
+        if ! ipt_available; then
+            echo "{\"status\":\"error\",\"message\":\"iptables no esta disponible\"}"
+            exit 1
+        fi
+
+        if iptables -n -L INPUT 2>/dev/null | grep -q "DROP.*${IP}"; then
+            iptables -D INPUT -s "$IP" -j DROP
+            log_info "Regla DROP eliminada de iptables para IP $IP"
+            echo "{\"status\":\"success\",\"message\":\"IP ${IP} desbloqueada en iptables\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"No existe regla DROP para ${IP} en iptables\"}"
+        fi
+        ;;
+
+    *)
+        usage
+        ;;
+esac

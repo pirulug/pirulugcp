@@ -111,8 +111,47 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-firewall") {
+            if ($action === "status") {
+                return [
+                    "status"   => "success",
+                    "fail2ban" => ["status" => "active", "banned_count" => 2],
+                    "iptables" => ["available" => true, "drop_rules" => 1]
+                ];
+            }
+            if ($action === "f2b-jails") {
+                return [
+                    "status" => "success",
+                    "jails"  => [
+                        [
+                            "jail"             => "sshd",
+                            "currently_banned" => 2,
+                            "total_banned"     => 5,
+                            "banned_ips"       => ["203.0.113.42", "198.51.100.7"]
+                        ],
+                        [
+                            "jail"             => "nginx-http-auth",
+                            "currently_banned" => 0,
+                            "total_banned"     => 1,
+                            "banned_ips"       => []
+                        ]
+                    ]
+                ];
+            }
+            if ($action === "ipt-list") {
+                return [
+                    "status" => "success",
+                    "rules"  => ["203.0.113.99"]
+                ];
+            }
+            return [
+                "status"  => "success",
+                "message" => "Accion de firewall ejecutada en modo simulacion"
+            ];
+        }
+
         return [
-            "status" => "success",
+            "status"  => "success",
             "message" => "Operacion completada exitosamente (Modo desarrollo)"
         ];
     }

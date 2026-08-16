@@ -27,6 +27,7 @@ use Pirulu\Modules\Database\Controllers\DatabaseController;
 use Pirulu\Modules\System\Controllers\SystemController;
 use Pirulu\Modules\Logs\Controllers\LogsController;
 use Pirulu\Modules\FileManager\Controllers\FileManagerController;
+use Pirulu\Modules\Firewall\Controllers\FirewallController;
 
 $router = new Router();
 
@@ -82,6 +83,11 @@ $router->post("/system/action", [SystemController::class, "serviceAction"]);
 // Rutas de Visor de Logs
 $router->get("/logs", [LogsController::class, "index"]);
 $router->post("/logs/clear", [LogsController::class, "clear"]);
+
+// Rutas de Firewall (Fail2Ban + IPTables)
+$router->get("/firewall", [FirewallController::class, "index"]);
+$router->post("/firewall/ban", [FirewallController::class, "banIp"]);
+$router->post("/firewall/unban", [FirewallController::class, "unbanIp"]);
 
 // Despachar la peticion
 $router->dispatch();
