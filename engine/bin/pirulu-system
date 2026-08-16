@@ -57,7 +57,9 @@ case "$ACTION" in
             fi
         fi
 
-        echo "{\"status\":\"success\",\"services\":{\"nginx\":\"${NGINX_STATUS}\",\"apache\":\"${APACHE_STATUS}\",\"mariadb\":\"${MARIADB_STATUS}\",\"fail2ban\":\"${F2B_STATUS}\",\"php_fpm\":${PHP_JSON}}}"
+        VSFTPD_STATUS=$(get_service_status "vsftpd")
+
+        echo "{\"status\":\"success\",\"services\":{\"nginx\":\"${NGINX_STATUS}\",\"apache\":\"${APACHE_STATUS}\",\"mariadb\":\"${MARIADB_STATUS}\",\"vsftpd\":\"${VSFTPD_STATUS}\",\"fail2ban\":\"${F2B_STATUS}\",\"php_fpm\":${PHP_JSON}}}"
         ;;
 
     metrics)

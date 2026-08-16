@@ -437,6 +437,8 @@ PiruluGCP cuenta con comandos CLI ubicados en `/usr/local/pirulugcp/engine/bin/`
 | `pirulu-db create <nombre_bd> <usuario> <password>` | Crea una base de datos MariaDB con usuario y privilegios. |
 | `pirulu-php list` | Lista todas las versiones de PHP instaladas y activas. |
 | `pirulu-mail add-domain <dominio>` | Configura el stack de correo para un dominio especifico. |
+| `pirulu-ftp account-add <user> <pass> <sys_user> <domain> [path]` | Crea una cuenta de acceso FTP virtual para un dominio. |
+| `pirulu-ftp status` | Verifica el estado del servicio vsftpd. |
 
 ---
 

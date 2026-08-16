@@ -51,6 +51,8 @@ After=network.target
 Type=notify
 ExecStart=${fpm_bin} --nodaemonize --fpm-config ${PIRULU_INSTALL_DIR}/config/php-fpm.conf
 ExecReload=/bin/kill -USR2 \$MAINPID
+Restart=always
+RestartSec=3
 PrivateTmp=true
 
 [Install]
