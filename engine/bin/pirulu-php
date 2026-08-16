@@ -295,6 +295,40 @@ php_remove() {
     echo "{\"status\":\"success\",\"message\":\"PHP $version desinstalado exitosamente del servidor\"}"
 }
 
+php_logs() {
+    local version="$1"
+    local lines="${2:-60}"
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+    local log_file="/var/log/php${version}-fpm.log"
+    [ ! -f "$log_file" ] && log_file="/var/log/pirulugcp/php-fpm.log"
+    local content=""
+    if [ -f "$log_file" ]; then
+        content=$(tail -n "$lines" "$log_file" | base64 -w 0 2>/dev/null || tail -n "$lines" "$log_file" | base64 | tr -d '\r\n')
+    fi
+    echo "{\"status\":\"success\",\"version\":\"$version\",\"log_file\":\"$log_file\",\"raw_base64\":\"$content\"}"
+}
+
+php_extensions() {
+    local version="$1"
+    [ -z "$version" ] && exit_error "Version de PHP requerida"
+    local ext_json="[]"
+    if command -v "php${version}" >/dev/null 2>&1; then
+        local raw_exts
+        raw_exts=$(php${version} -m 2>/dev/null | grep -E '^[a-zA-Z0-9_-]+$' | grep -v -E '^(\[.*\])$' | sort -u)
+        local json="["
+        local first=1
+        while IFS= read -r ext; do
+            [ -z "$ext" ] && continue
+            [ "$first" -eq 0 ] && json="${json},"
+            json="${json}\"${ext}\""
+            first=0
+        done <<< "$raw_exts"
+        json="${json}]"
+        ext_json="$json"
+    fi
+    echo "{\"status\":\"success\",\"version\":\"$version\",\"extensions\":$ext_json}"
+}
+
 case "$ACTION" in
     versions)
         php_versions_list
@@ -304,6 +338,12 @@ case "$ACTION" in
         ;;
     remove|uninstall)
         php_remove "$PARAM1"
+        ;;
+    logs)
+        php_logs "$PARAM1" "$PARAM2"
+        ;;
+    extensions)
+        php_extensions "$PARAM1"
         ;;
     pool-add)
         php_pool_add "$PARAM1" "$PARAM2" "$PARAM3" "$PARAM4" "$PARAM5" "$PARAM6"

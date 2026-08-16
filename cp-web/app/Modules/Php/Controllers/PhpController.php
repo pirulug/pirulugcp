@@ -15,24 +15,86 @@ class PhpController {
     $phpData = Engine::execute("pirulu-php", ["versions"]);
     $versions = $phpData["versions"] ?? [];
 
-    foreach ($versions as &$v) {
-      if (!isset($v["service"])) {
-        $v["service"] = "php" . $v["version"] . "-fpm";
+    $installedVersions = [];
+    $availableToInstall = [];
+
+    foreach ($versions as $v) {
+      if (!empty($v["installed"])) {
+        $installedVersions[] = $v;
+      } else {
+        $availableToInstall[] = $v;
       }
     }
-    unset($v);
 
+    // Version activa seleccionada
+    $activeVer = $_GET["ver"] ?? "";
+    if (empty($activeVer) || !in_array($activeVer, array_column($installedVersions, "version"))) {
+      if (!empty($installedVersions)) {
+        // Preferir 8.5 si esta instalada, o la primera instalada
+        $found85 = false;
+        foreach ($installedVersions as $iv) {
+          if ($iv["version"] === "8.5") {
+            $activeVer = "8.5";
+            $found85 = true;
+            break;
+          }
+        }
+        if (!$found85) {
+          $activeVer = $installedVersions[0]["version"];
+        }
+      } else {
+        $activeVer = "8.5";
+      }
+    }
+
+    // Pestana activa
+    $activeTab = $_GET["tab"] ?? "logs";
+    if (!in_array($activeTab, ["logs", "ini", "ports", "extensions"])) {
+      $activeTab = "logs";
+    }
+
+    // Dominios asignados a todas las versiones
     $usageStats = [];
     $stmt = $db->query("SELECT php_version, COUNT(*) as total FROM domains GROUP BY php_version");
     while ($row = $stmt->fetch()) {
-      $usageStats[$row["php_version"]] = $row["total"];
+      $usageStats[$row["php_version"]] = (int)$row["total"];
     }
 
+    // Dominios de la version activa
+    $activeDomains = [];
+    $stmt = $db->prepare("SELECT d.*, u.username FROM domains d LEFT JOIN users u ON d.user_id = u.id WHERE d.php_version = ? ORDER BY d.id DESC");
+    $stmt->execute([$activeVer]);
+    $activeDomains = $stmt->fetchAll();
+
+    // Obtener datos segun la version activa
+    $logsData = Engine::execute("pirulu-php", ["logs", $activeVer, "80"]);
+    $rawLogs = "";
+    if (!empty($logsData["raw_base64"])) {
+      $rawLogs = base64_decode($logsData["raw_base64"]);
+    }
+
+    $iniData = Engine::execute("pirulu-php", ["get-ini", $activeVer]);
+    $rawIni = "";
+    if (!empty($iniData["raw_base64"])) {
+      $rawIni = base64_decode($iniData["raw_base64"]);
+    }
+
+    $extData = Engine::execute("pirulu-php", ["extensions", $activeVer]);
+    $extensions = $extData["extensions"] ?? [];
+
     View::render("Modules/Php/Views/index", [
-      "pageTitle"   => "Gestor de PHP Multi-Version - PiruluGCP",
-      "versions"    => $versions,
-      "phpVersions" => $versions,
-      "usageStats"  => $usageStats
+      "pageTitle"          => "Gestor de PHP Multi-Version - PiruluGCP",
+      "versions"           => $versions,
+      "installedVersions"  => $installedVersions,
+      "availableToInstall" => $availableToInstall,
+      "activeVer"          => $activeVer,
+      "activeTab"          => $activeTab,
+      "usageStats"         => $usageStats,
+      "activeDomains"      => $activeDomains,
+      "rawLogs"            => $rawLogs,
+      "ini"                => $iniData,
+      "rawIni"             => $rawIni,
+      "extensions"         => $extensions
     ]);
   }
 
@@ -54,7 +116,7 @@ class PhpController {
       View::setFlash("danger", "Error al instalar PHP " . $version . ": " . ($res["message"] ?? "Fallo en instalación"));
     }
 
-    header("Location: /php");
+    header("Location: /php?ver=" . $version);
     exit();
   }
 
@@ -71,7 +133,7 @@ class PhpController {
 
     if ($version === "8.5") {
       View::setFlash("warning", "No se permite desinstalar la versión base PHP 8.5 utilizada por el sistema.");
-      header("Location: /php");
+      header("Location: /php?ver=" . $version);
       exit();
     }
 
@@ -83,7 +145,7 @@ class PhpController {
 
     if ($domainCount > 0) {
       View::setFlash("danger", "No se puede desinstalar PHP " . $version . " porque está asignada a " . $domainCount . " dominio(s). Cambia la versión en dichos dominios antes de desinstalar.");
-      header("Location: /php");
+      header("Location: /php?ver=" . $version);
       exit();
     }
 
@@ -101,30 +163,9 @@ class PhpController {
 
   public function config($version) {
     Auth::requireAuth();
-
     $version = preg_replace("/[^0-9.]/", "", (string)$version);
-    $iniData = Engine::execute("pirulu-php", ["get-ini", $version]);
-
-    if (!isset($iniData["status"]) || $iniData["status"] !== "success") {
-      View::setFlash("danger", "No se pudo obtener la configuración de PHP " . $version . ".");
-      header("Location: /php");
-      exit();
-    }
-
-    $rawIni = "";
-    if (!empty($iniData["raw_base64"])) {
-      $rawIni = base64_decode($iniData["raw_base64"]);
-    }
-
-    $activeTab = $_GET["tab"] ?? "basic";
-
-    View::render("Modules/Php/Views/config", [
-      "pageTitle" => "Configurar Servidor: PHP " . $version . " - PiruluGCP",
-      "version"   => $version,
-      "ini"       => $iniData,
-      "rawIni"    => $rawIni,
-      "activeTab" => $activeTab
-    ]);
+    header("Location: /php?ver=" . $version . "&tab=ini");
+    exit();
   }
 
   public function saveConfig($version) {
@@ -157,7 +198,7 @@ class PhpController {
       View::setFlash("danger", "Error al guardar configuración de PHP " . $version . ": " . ($res["message"] ?? "Fallo"));
     }
 
-    header("Location: /php/config/" . $version . "?tab=basic");
+    header("Location: /php?ver=" . $version . "&tab=ini");
     exit();
   }
 
@@ -176,7 +217,7 @@ class PhpController {
       View::setFlash("danger", "Error al guardar archivo php.ini de PHP " . $version . ": " . ($res["message"] ?? "Fallo"));
     }
 
-    header("Location: /php/config/" . $version . "?tab=advanced");
+    header("Location: /php?ver=" . $version . "&tab=ini");
     exit();
   }
 
@@ -191,7 +232,7 @@ class PhpController {
       View::setFlash("danger", "Error al reiniciar PHP-FPM " . $version . ".");
     }
 
-    header("Location: /php");
+    header("Location: /php?ver=" . $version);
     exit();
   }
 }

@@ -121,6 +121,9 @@ $router->get("/mail/forwarder/delete/{id}", [MailController::class, "deleteForwa
 $router->get("/web", [WebController::class, "index"]);
 $router->get("/web/create", [WebController::class, "create"]);
 $router->post("/web/store", [WebController::class, "store"]);
+$router->get("/web/domain/{id}", [WebController::class, "show"]);
+$router->post("/web/domain/{id}/env", [WebController::class, "saveEnv"]);
+$router->post("/web/domain/{id}/tinker", [WebController::class, "runTinker"]);
 $router->post("/web/update-php", [WebController::class, "updatePhp"]);
 $router->post("/web/update-docroot", [WebController::class, "updateDocRoot"]);
 $router->get("/web/enable-ssl/{id}", [WebController::class, "enableSsl"]);
@@ -169,6 +172,8 @@ $router->get("/php/restart/{version}", [PhpController::class, "restart"]);
 $router->get("/database", [DatabaseController::class, "index"]);
 $router->get("/database/create", [DatabaseController::class, "create"]);
 $router->post("/database/store", [DatabaseController::class, "store"]);
+$router->get("/database/dump/{id}", [DatabaseController::class, "dump"]);
+$router->post("/database/config/save", [DatabaseController::class, "saveConfig"]);
 $router->get("/database/edit/{id}", [DatabaseController::class, "edit"]);
 $router->post("/database/update/{id}", [DatabaseController::class, "update"]);
 $router->get("/database/autologin/{id}", [DatabaseController::class, "autologin"]);

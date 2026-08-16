@@ -18,6 +18,10 @@ usage() {
     echo "  delete <db_name> [db_user]            Eliminar base de datos y usuario opcional"
     echo "  passwd <db_user> <new_password>       Cambiar clave de usuario MariaDB"
     echo "  list                                  Listar bases de datos (JSON)"
+    echo "  dump <db_name>                        Exportar dump SQL de la base de datos"
+    echo "  logs [lines]                          Obtener registros del servidor MariaDB"
+    echo "  get-config                            Obtener archivo de configuracion de MariaDB"
+    echo "  save-config <base64_content>          Guardar archivo my.cnf y reiniciar MariaDB"
     exit 1
 }
 
@@ -74,8 +78,64 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"message\":\"Clave actualizada para $DB_USER\"}"
         ;;
 
+    dump)
+        DB_NAME="$2"
+        [ -z "$DB_NAME" ] && usage
+        
+        BACKUP_DIR="/var/backups/pirulugcp/databases"
+        mkdir -p "$BACKUP_DIR"
+        DUMP_FILE="${BACKUP_DIR}/${DB_NAME}_$(date +%Y%m%d_%H%M%S).sql"
+
+        mysqldump --single-transaction --quick --lock-tables=false "$DB_NAME" > "$DUMP_FILE" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "{\"status\":\"success\",\"file\":\"$DUMP_FILE\",\"size\":$(stat -c%s "$DUMP_FILE" 2>/dev/null || echo 0)}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"Fallo al exportar base de datos $DB_NAME\"}"
+        fi
+        ;;
+
+    logs)
+        LINES="${2:-60}"
+        LOG_FILE="/var/log/mysql/error.log"
+        [ ! -f "$LOG_FILE" ] && LOG_FILE="/var/log/mysql/mariadb.log"
+        
+        if [ -f "$LOG_FILE" ]; then
+            LOGS=$(tail -n "$LINES" "$LOG_FILE" 2>/dev/null)
+        else
+            LOGS=$(journalctl -u mariadb -n "$LINES" --no-pager 2>/dev/null || journalctl -u mysql -n "$LINES" --no-pager 2>/dev/null || echo "[Sin registros de MariaDB]")
+        fi
+
+        RAW_B64=$(echo -n "$LOGS" | base64 -w 0 2>/dev/null || echo -n "$LOGS" | base64)
+        echo "{\"status\":\"success\",\"raw_base64\":\"$RAW_B64\"}"
+        ;;
+
+    get-config)
+        CNF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
+        [ ! -f "$CNF_FILE" ] && CNF_FILE="/etc/mysql/my.cnf"
+        
+        if [ -f "$CNF_FILE" ]; then
+            CONTENT=$(cat "$CNF_FILE")
+        else
+            CONTENT="# MariaDB Configuration\n[mysqld]\nbind-address = 127.0.0.1\nmax_connections = 150\n"
+        fi
+
+        RAW_B64=$(echo -n "$CONTENT" | base64 -w 0 2>/dev/null || echo -n "$CONTENT" | base64)
+        echo "{\"status\":\"success\",\"file\":\"$CNF_FILE\",\"raw_base64\":\"$RAW_B64\"}"
+        ;;
+
+    save-config)
+        RAW_B64="$2"
+        [ -z "$RAW_B64" ] && usage
+        
+        CNF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
+        [ ! -f "$CNF_FILE" ] && CNF_FILE="/etc/mysql/my.cnf"
+
+        echo "$RAW_B64" | base64 -d > "$CNF_FILE"
+        systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || true
+        echo "{\"status\":\"success\",\"message\":\"Configuracion de MariaDB guardada y servicio reiniciado\"}"
+        ;;
+
     list)
-        # Listar bases de datos que no sean del sistema
         DBS=$(run_sql "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys');" | tail -n +2)
         JSON_LIST="["
         FIRST=1

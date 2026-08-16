@@ -183,6 +183,38 @@ class Engine {
           "message" => "PHP-FPM {$ver} reiniciado"
         ];
       }
+      if ($action === "logs") {
+        $ver = $args[1] ?? "8.5";
+        $logs = "[2026-08-16 17:15:25] 127.0.0.1 \"GET /\" 200 138ms\n" .
+                "[2026-08-16 17:15:28] 127.0.0.1 \"GET /products\" 200 70ms\n" .
+                "[2026-08-16 17:15:34] 127.0.0.1 \"POST /checkout\" 302 199ms\n" .
+                "[2026-08-16 17:15:37] PHP Warning: Undefined array key \"coupon\" on line 52\n" .
+                "[2026-08-16 17:15:39] 127.0.0.1 \"GET /orders/42\" 200 233ms\n" .
+                "[2026-08-16 17:18:00] NOTICE: ready to handle connections\n" .
+                "[2026-08-16 17:18:00] NOTICE: fpm is running, pid 236";
+        return [
+          "status"     => "success",
+          "version"    => $ver,
+          "log_file"   => "/var/log/php{$ver}-fpm.log",
+          "raw_base64" => base64_encode($logs)
+        ];
+      }
+      if ($action === "extensions") {
+        $ver = $args[1] ?? "8.5";
+        return [
+          "status"     => "success",
+          "version"    => $ver,
+          "extensions" => [
+            "bcmath", "calendar", "Core", "ctype", "curl", "date", "dom", "exif",
+            "FFI", "fileinfo", "filter", "ftp", "gd", "gettext", "hash", "iconv",
+            "imagick", "intl", "json", "libxml", "mbstring", "mysqli", "mysqlnd",
+            "openssl", "pcre", "PDO", "pdo_mysql", "pdo_sqlite", "Phar", "posix",
+            "readline", "Reflection", "session", "shmop", "SimpleXML", "sockets",
+            "sodium", "SPL", "sqlite3", "standard", "sysvmsg", "sysvsem", "sysvshm",
+            "tokenizer", "xml", "xmlreader", "xmlwriter", "xsl", "zip", "zlib"
+          ]
+        ];
+      }
       return [
         "status" => "success",
         "versions" => [
@@ -366,6 +398,40 @@ class Engine {
         "spf_record"    => "v=spf1 a mx ip4:192.168.1.100 ~all",
         "dkim_selector" => "default",
         "dkim_record"   => "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsimulatedKeyExample..."
+      ];
+    }
+
+    if ($binary === "pirulu-db") {
+      if ($action === "logs") {
+        $logs = "[2026-08-16 12:00:01] 0 [Note] Starting MariaDB 10.11.8-MariaDB-0ubuntu0.24.04.1 source revision ...\n" .
+                "[2026-08-16 12:00:01] 0 [Note] Server socket created on IP: '127.0.0.1'.\n" .
+                "[2026-08-16 12:00:01] 0 [Note] Version: '10.11.8-MariaDB'  socket: '/run/mysqld/mysqld.sock'  port: 3306\n" .
+                "[2026-08-16 12:00:01] 0 [Note] InnoDB: Buffer pool(s) load completed\n" .
+                "[2026-08-16 12:20:15] 12 [Note] Connection 12 established to database 'acme' from user 'admin_acme'\n" .
+                "[2026-08-16 12:24:30] 15 [Note] Query execution status: OK, 14 tables analyzed";
+        return [
+          "status"     => "success",
+          "raw_base64" => base64_encode($logs)
+        ];
+      }
+      if ($action === "get-config") {
+        $cnf = "# MariaDB Server Master Configuration\n[mysqld]\nuser = mysql\npid-file = /run/mysqld/mysqld.pid\nsocket = /run/mysqld/mysqld.sock\nport = 3306\nbasedir = /usr\ndatadir = /var/lib/mysql\ntmpdir = /tmp\nlc-messages-dir = /usr/share/mysql\nbind-address = 127.0.0.1\n\n# Buffer Pool & Conexiones\nkey_buffer_size = 128M\nmax_allowed_packet = 64M\nthread_stack = 192K\nthread_cache_size = 8\nmax_connections = 150\n\n# InnoDB Tuning\ninnodb_buffer_pool_size = 256M\ninnodb_log_file_size = 64M\ninnodb_file_per_table = 1\n";
+        return [
+          "status"     => "success",
+          "file"       => "/etc/mysql/mariadb.conf.d/50-server.cnf",
+          "raw_base64" => base64_encode($cnf)
+        ];
+      }
+      if ($action === "dump") {
+        return [
+          "status" => "success",
+          "file"   => "/var/backups/pirulugcp/databases/" . ($args[1] ?? "db") . ".sql",
+          "size"   => 48234120
+        ];
+      }
+      return [
+        "status"  => "success",
+        "message" => "Operacion de base de datos ejecutada exitosamente"
       ];
     }
 
