@@ -114,8 +114,51 @@ case "$ACTION" in
         echo "{\"status\":\"success\",\"message\":\"Archivo ZIP extraido correctamente\"}"
         ;;
 
+    import|move)
+        SRC_FILE="$TARGET_PATH"
+        DEST_FILE="$PARAM1"
+        OWNER_USER="$PARAM2"
+        validate_safe_path "$DEST_FILE"
+
+        if [ ! -f "$SRC_FILE" ]; then
+            exit_error "El archivo temporal no existe: $SRC_FILE"
+        fi
+
+        DEST_PARENT=$(dirname "$DEST_FILE")
+        mkdir -p "$DEST_PARENT"
+
+        mv -f "$SRC_FILE" "$DEST_FILE"
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown "${OWNER_USER}:${OWNER_USER}" "$DEST_FILE"
+        fi
+        chmod 644 "$DEST_FILE"
+        echo "{\"status\":\"success\",\"message\":\"Archivo subido correctamente\"}"
+        ;;
+
+    write)
+        validate_safe_path "$TARGET_PATH"
+        TEMP_FILE="$PARAM1"
+        OWNER_USER="$PARAM2"
+
+        if [ ! -f "$TEMP_FILE" ]; then
+            exit_error "El archivo temporal no existe: $TEMP_FILE"
+        fi
+
+        PARENT_DIR=$(dirname "$TARGET_PATH")
+        mkdir -p "$PARENT_DIR"
+
+        mv -f "$TEMP_FILE" "$TARGET_PATH"
+
+        if [ -n "$OWNER_USER" ] && id "$OWNER_USER" >/dev/null 2>&1; then
+            chown "${OWNER_USER}:${OWNER_USER}" "$TARGET_PATH"
+        fi
+        chmod 644 "$TARGET_PATH"
+        echo "{\"status\":\"success\",\"message\":\"Archivo guardado correctamente\"}"
+        ;;
+
     *)
-        echo "Uso: pirulu-files <list|mkdir|touch|delete|chmod|chown|unzip> <ruta> [param1] [param2]"
+        echo "Uso: pirulu-files <list|mkdir|touch|delete|chmod|chown|unzip|import|write> <ruta> [param1] [param2]"
         exit 1
         ;;
 esac

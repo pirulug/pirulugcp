@@ -137,19 +137,49 @@ class FileManagerController {
 
         $targetDir = empty($path) ? $baseDir : ($baseDir . "/" . trim($path, "/"));
 
+        $uploadedCount = 0;
+        $failedCount = 0;
+
         if (!empty($_FILES["files"]["name"][0])) {
             $count = count($_FILES["files"]["name"]);
             for ($i = 0; $i < $count; $i++) {
+                if ($_FILES["files"]["error"][$i] !== UPLOAD_ERR_OK) {
+                    $failedCount++;
+                    continue;
+                }
+
                 $fileName = basename($_FILES["files"]["name"][$i]);
                 $tmpName = $_FILES["files"]["tmp_name"][$i];
                 $dest = $targetDir . "/" . $fileName;
 
-                if (move_uploaded_file($tmpName, $dest)) {
-                    Engine::execute("pirulu-files", ["chown", $dest, $username]);
-                    Engine::execute("pirulu-files", ["chmod", $dest, "0644"]);
+                if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN") {
+                    if (move_uploaded_file($tmpName, $dest)) {
+                        $uploadedCount++;
+                    } else {
+                        $failedCount++;
+                    }
+                } else {
+                    // Mover primero a una ruta temporal segura accesible por www-data
+                    $tempImport = sys_get_temp_dir() . "/pirulu_up_" . uniqid() . "_" . $fileName;
+                    if (move_uploaded_file($tmpName, $tempImport)) {
+                        $res = Engine::execute("pirulu-files", ["import", $tempImport, $dest, $username]);
+                        if (isset($res["status"]) && $res["status"] === "success") {
+                            $uploadedCount++;
+                        } else {
+                            @unlink($tempImport);
+                            $failedCount++;
+                        }
+                    } else {
+                        $failedCount++;
+                    }
                 }
             }
-            View::setFlash("success", "Archivos subidos correctamente.");
+
+            if ($uploadedCount > 0) {
+                View::setFlash("success", $uploadedCount . " archivo(s) subido(s) correctamente.");
+            } else {
+                View::setFlash("danger", "Error al subir los archivos. Verifica los permisos del directorio.");
+            }
         }
 
         header("Location: /files?domain=" . urlencode($domain) . "&path=" . urlencode($path));
@@ -240,14 +270,28 @@ class FileManagerController {
 
         $filePath = $baseDir . "/" . ltrim($path, "/");
 
-        if (file_exists($filePath) && is_file($filePath)) {
-            file_put_contents($filePath, $content);
-            Engine::execute("pirulu-files", ["chown", $filePath, $username]);
-            header("Content-Type: application/json");
+        if (strtoupper(substr(PHP_OS, 0, 3)) === "WIN") {
+            if (file_put_contents($filePath, $content) !== false) {
+                header("Content-Type: application/json");
+                echo json_encode(["status" => "success", "message" => "Archivo guardado exitosamente"]);
+            } else {
+                header("Content-Type: application/json");
+                echo json_encode(["status" => "error", "message" => "No se pudo guardar el archivo"]);
+            }
+            exit;
+        }
+
+        // En Linux, guardar mediante archivo temporal y pirulu-files write para garantizar permisos
+        $tempSave = sys_get_temp_dir() . "/pirulu_save_" . uniqid();
+        file_put_contents($tempSave, $content);
+        $res = Engine::execute("pirulu-files", ["write", $filePath, $tempSave, $username]);
+        @unlink($tempSave);
+
+        header("Content-Type: application/json");
+        if (isset($res["status"]) && $res["status"] === "success") {
             echo json_encode(["status" => "success", "message" => "Archivo guardado exitosamente"]);
         } else {
-            header("Content-Type: application/json");
-            echo json_encode(["status" => "error", "message" => "No se pudo guardar el archivo"]);
+            echo json_encode(["status" => "error", "message" => $res["message"] ?? "No se pudo guardar el archivo"]);
         }
         exit;
     }
