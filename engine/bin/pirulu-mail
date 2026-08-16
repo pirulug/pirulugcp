@@ -1,0 +1,374 @@
+#!/usr/bin/env bash
+# Gestor de Servidor de Correo (Exim4 + Dovecot + Webmail) para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+PARAM1="$2"
+PARAM2="$3"
+PARAM3="$4"
+PARAM4="$5"
+
+DOVECOT_USERS="/etc/dovecot/users"
+EXIM_DOMAINS_DIR="/etc/exim4/domains"
+EXIM_ALIASES_DIR="/etc/exim4/aliases"
+EXIM_DKIM_DIR="/etc/exim4/dkim"
+NGINX_SITES_AVAIL="/etc/nginx/sites-available"
+NGINX_SITES_ENAB="/etc/nginx/sites-enabled"
+WEBMAIL_TPL="${SCRIPT_DIR}/../templates/nginx/webmail.conf.tpl"
+
+usage() {
+    echo "Uso: pirulu-mail <domain-add|domain-del|account-add|account-del|account-passwd|account-quota|forwarder-add|forwarder-del|dkim-get|status> [params...]"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+init_mail_system_dirs() {
+    mkdir -p "$EXIM_DOMAINS_DIR" "$EXIM_ALIASES_DIR" "$EXIM_DKIM_DIR" /etc/dovecot
+    touch "$DOVECOT_USERS"
+    chmod 640 "$DOVECOT_USERS"
+    chown root:dovecot "$DOVECOT_USERS" 2>/dev/null || chown root:root "$DOVECOT_USERS"
+}
+
+hash_password_sha512() {
+    local pass="$1"
+    if command -v doveadm >/dev/null 2>&1; then
+        doveadm pw -s SHA512-CRYPT -p "$pass" 2>/dev/null | tr -d '\r\n'
+    elif command -v mkpasswd >/dev/null 2>&1; then
+        local raw
+        raw=$(mkpasswd -m sha-512 "$pass" 2>/dev/null)
+        echo "{SHA512-CRYPT}${raw}"
+    elif command -v openssl >/dev/null 2>&1; then
+        local raw
+        raw=$(openssl passwd -6 "$pass" 2>/dev/null)
+        echo "{SHA512-CRYPT}${raw}"
+    else
+        local salt
+        salt=$(head -c 32 /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
+        local raw
+        raw=$(php -r "echo crypt('$pass', '\$6\$$salt\$');" 2>/dev/null)
+        echo "{SHA512-CRYPT}${raw}"
+    fi
+}
+
+mail_domain_add() {
+    local domain="$1"
+    local user="$2"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+    [ -z "$user" ] && user="admin"
+
+    domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+    id "$user" >/dev/null 2>&1 || exit_error "El usuario Linux $user no existe"
+
+    init_mail_system_dirs
+    log_info "Configurando servicio de correo y DKIM para dominio: $domain (Usuario: $user)"
+
+    # 1. Habilitar dominio en Exim4
+    touch "${EXIM_DOMAINS_DIR}/${domain}"
+    touch "${EXIM_ALIASES_DIR}/${domain}"
+    chmod 644 "${EXIM_DOMAINS_DIR}/${domain}" "${EXIM_ALIASES_DIR}/${domain}"
+
+    # 2. Generar clave DKIM privada y publica si no existen
+    local dkim_priv="${EXIM_DKIM_DIR}/${domain}.private"
+    local dkim_pub="${EXIM_DKIM_DIR}/${domain}.public"
+
+    if [ ! -f "$dkim_priv" ]; then
+        openssl genrsa -out "$dkim_priv" 2048 >/dev/null 2>&1
+        openssl rsa -in "$dkim_priv" -pubout -out "$dkim_pub" >/dev/null 2>&1
+        chmod 640 "$dkim_priv" "$dkim_pub" 2>/dev/null || true
+        chown -R root:Debian-exim "$EXIM_DKIM_DIR" 2>/dev/null || true
+    fi
+
+    # Extraer llave publica sin cabeceras para registro DNS TXT
+    local dkim_key_raw=""
+    if [ -f "$dkim_pub" ]; then
+        dkim_key_raw=$(grep -v '^-' "$dkim_pub" | tr -d '\r\n')
+    fi
+
+    # 3. Crear directorio base para buzones del dominio
+    local mail_base_dir="/home/${user}/mail/${domain}"
+    mkdir -p "$mail_base_dir"
+    chown -R "${user}:${user}" "/home/${user}/mail"
+    chmod 750 "/home/${user}/mail" "$mail_base_dir"
+
+    # 4. Crear VirtualHost de Nginx para webmail.DOMAIN
+    local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
+    if [ -f "$WEBMAIL_TPL" ]; then
+        sed "s/%DOMAIN%/${domain}/g" "$WEBMAIL_TPL" > "$webmail_conf"
+        ln -sf "$webmail_conf" "${NGINX_SITES_ENAB}/webmail.${domain}.conf"
+    fi
+
+    # Agregar entrada en /etc/hosts si no existe
+    if ! grep -qw "webmail.${domain}" /etc/hosts 2>/dev/null; then
+        echo "127.0.0.1 webmail.${domain}" >> /etc/hosts
+    fi
+
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx 2>/dev/null || true
+    fi
+
+    systemctl reload-or-restart exim4 2>/dev/null || true
+    systemctl reload-or-restart dovecot 2>/dev/null || true
+
+    local srv_ip
+    srv_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$srv_ip" ] && srv_ip="127.0.0.1"
+
+    local spf_record="v=spf1 a mx ip4:${srv_ip} ~all"
+    local dkim_record="v=DKIM1; k=rsa; p=${dkim_key_raw}"
+
+    echo "{\"status\":\"success\",\"message\":\"Servicio de correo habilitado para $domain\",\"domain\":\"$(json_escape "$domain")\",\"webmail_url\":\"http://webmail.${domain}\",\"spf_record\":\"$(json_escape "$spf_record")\",\"dkim_selector\":\"default\",\"dkim_record\":\"$(json_escape "$dkim_record")\"}"
+}
+
+mail_domain_del() {
+    local domain="$1"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+    domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+
+    log_info "Eliminando servicio de correo para dominio: $domain"
+
+    rm -f "${EXIM_DOMAINS_DIR}/${domain}"
+    rm -f "${EXIM_ALIASES_DIR}/${domain}"
+    rm -f "${EXIM_DKIM_DIR}/${domain}.private" "${EXIM_DKIM_DIR}/${domain}.public"
+    rm -f "${NGINX_SITES_ENAB}/webmail.${domain}.conf" "${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
+
+    if [ -f "$DOVECOT_USERS" ]; then
+        sed -i "/@${domain}:/d" "$DOVECOT_USERS"
+    fi
+
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
+    systemctl reload-or-restart exim4 2>/dev/null || true
+    systemctl reload-or-restart dovecot 2>/dev/null || true
+
+    echo "{\"status\":\"success\",\"message\":\"Servicio de correo eliminado para $domain\"}"
+}
+
+mail_account_add() {
+    local email="$1"
+    local pass="$2"
+    local user="$3"
+    local quota_mb="${4:-1024}"
+
+    [ -z "$email" ] && exit_error "Correo electronico requerido"
+    [ -z "$pass" ] && exit_error "Contraseña requerida"
+    [ -z "$user" ] && user="admin"
+
+    email=$(echo "$email" | tr '[:upper:]' '[:lower:]')
+    local acc_user="${email%%@*}"
+    local acc_domain="${email##*@}"
+
+    id "$user" >/dev/null 2>&1 || exit_error "El usuario Linux $user no existe"
+    local uid gid
+    uid=$(id -u "$user")
+    gid=$(id -g "$user")
+
+    init_mail_system_dirs
+    log_info "Creando cuenta de correo $email para usuario $user (Cuota: ${quota_mb}MB)..."
+
+    local pass_hash
+    pass_hash=$(hash_password_sha512 "$pass")
+
+    local maildir_path="/home/${user}/mail/${acc_domain}/${acc_user}"
+    mkdir -p "${maildir_path}/Maildir/"{cur,new,tmp}
+    chown -R "${user}:${user}" "${maildir_path}"
+    chmod -R 700 "${maildir_path}"
+
+    sed -i "/^${email}:/d" "$DOVECOT_USERS"
+
+    local dovecot_entry="${email}:${pass_hash}:${uid}:${gid}::${maildir_path}::userdb_quota_rule=*:storage=${quota_mb}M"
+    echo "$dovecot_entry" >> "$DOVECOT_USERS"
+
+    systemctl reload-or-restart dovecot 2>/dev/null || true
+
+    echo "{\"status\":\"success\",\"message\":\"Cuenta de correo $email creada exitosamente\",\"email\":\"$(json_escape "$email")\",\"maildir\":\"$(json_escape "$maildir_path")\",\"quota_mb\":$quota_mb}"
+}
+
+mail_account_del() {
+    local email="$1"
+    local user="$2"
+    [ -z "$email" ] && exit_error "Correo electronico requerido"
+    email=$(echo "$email" | tr '[:upper:]' '[:lower:]')
+    local acc_user="${email%%@*}"
+    local acc_domain="${email##*@}"
+
+    log_info "Eliminando cuenta de correo $email..."
+
+    if [ -f "$DOVECOT_USERS" ]; then
+        sed -i "/^${email}:/d" "$DOVECOT_USERS"
+    fi
+
+    if [ -n "$user" ] && [ -d "/home/${user}/mail/${acc_domain}/${acc_user}" ]; then
+        rm -rf "/home/${user}/mail/${acc_domain}/${acc_user}"
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Cuenta $email eliminada exitosamente\"}"
+}
+
+mail_account_passwd() {
+    local email="$1"
+    local new_pass="$2"
+    [ -z "$email" ] && exit_error "Correo electronico requerido"
+    [ -z "$new_pass" ] && exit_error "Nueva contraseña requerida"
+    email=$(echo "$email" | tr '[:upper:]' '[:lower:]')
+
+    if [ ! -f "$DOVECOT_USERS" ] || ! grep -q "^${email}:" "$DOVECOT_USERS"; then
+        exit_error "La cuenta $email no existe en el servidor"
+    fi
+
+    local new_hash
+    new_hash=$(hash_password_sha512 "$new_pass")
+
+    local line
+    line=$(grep "^${email}:" "$DOVECOT_USERS")
+    local rest
+    rest=$(echo "$line" | cut -d: -f3-)
+    local updated_line="${email}:${new_hash}:${rest}"
+
+    sed -i "/^${email}:/d" "$DOVECOT_USERS"
+    echo "$updated_line" >> "$DOVECOT_USERS"
+
+    echo "{\"status\":\"success\",\"message\":\"Contraseña de $email actualizada exitosamente\"}"
+}
+
+mail_account_quota() {
+    local email="$1"
+    local quota_mb="$2"
+    [ -z "$email" ] && exit_error "Correo electronico requerido"
+    [ -z "$quota_mb" ] && quota_mb="1024"
+    email=$(echo "$email" | tr '[:upper:]' '[:lower:]')
+
+    if [ ! -f "$DOVECOT_USERS" ] || ! grep -q "^${email}:" "$DOVECOT_USERS"; then
+        exit_error "La cuenta $email no existe en el servidor"
+    fi
+
+    local line
+    line=$(grep "^${email}:" "$DOVECOT_USERS")
+    local prefix
+    prefix=$(echo "$line" | sed 's/userdb_quota_rule=.*//')
+    local updated_line="${prefix}userdb_quota_rule=*:storage=${quota_mb}M"
+
+    sed -i "/^${email}:/d" "$DOVECOT_USERS"
+    echo "$updated_line" >> "$DOVECOT_USERS"
+
+    echo "{\"status\":\"success\",\"message\":\"Cuota de $email actualizada a ${quota_mb}MB\",\"quota_mb\":$quota_mb}"
+}
+
+mail_forwarder_add() {
+    local src_email="$1"
+    local dest_email="$2"
+    [ -z "$src_email" ] && exit_error "Correo origen requerido"
+    [ -z "$dest_email" ] && exit_error "Correo destino requerido"
+
+    src_email=$(echo "$src_email" | tr '[:upper:]' '[:lower:]')
+    local src_user="${src_email%%@*}"
+    local src_domain="${src_email##*@}"
+    local alias_file="${EXIM_ALIASES_DIR}/${src_domain}"
+
+    mkdir -p "$EXIM_ALIASES_DIR"
+    touch "$alias_file"
+
+    if grep -q "^${src_user}:" "$alias_file"; then
+        sed -i "s|^${src_user}:.*|${src_user}: ${dest_email}|" "$alias_file"
+    else
+        echo "${src_user}: ${dest_email}" >> "$alias_file"
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Reenvio $src_email -> $dest_email configurado exitosamente\"}"
+}
+
+mail_forwarder_del() {
+    local src_email="$1"
+    [ -z "$src_email" ] && exit_error "Correo origen requerido"
+
+    src_email=$(echo "$src_email" | tr '[:upper:]' '[:lower:]')
+    local src_user="${src_email%%@*}"
+    local src_domain="${src_email##*@}"
+    local alias_file="${EXIM_ALIASES_DIR}/${src_domain}"
+
+    if [ -f "$alias_file" ]; then
+        sed -i "/^${src_user}:/d" "$alias_file"
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Reenvio para $src_email eliminado exitosamente\"}"
+}
+
+mail_dkim_get() {
+    local domain="$1"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+    domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+
+    local dkim_pub="${EXIM_DKIM_DIR}/${domain}.public"
+    local dkim_key_raw=""
+    if [ -f "$dkim_pub" ]; then
+        dkim_key_raw=$(grep -v '^-' "$dkim_pub" | tr -d '\r\n')
+    fi
+
+    local srv_ip
+    srv_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$srv_ip" ] && srv_ip="127.0.0.1"
+
+    local spf_record="v=spf1 a mx ip4:${srv_ip} ~all"
+    local dkim_record="v=DKIM1; k=rsa; p=${dkim_key_raw}"
+    local dmarc_record="v=DMARC1; p=none; sp=none; aspf=r;"
+
+    echo "{\"status\":\"success\",\"domain\":\"$(json_escape "$domain")\",\"selector\":\"default\",\"dkim_record\":\"$(json_escape "$dkim_record")\",\"spf_record\":\"$(json_escape "$spf_record")\",\"dmarc_record\":\"$(json_escape "$dmarc_record")\",\"server_ip\":\"$(json_escape "$srv_ip")\"}"
+}
+
+mail_status() {
+    local exim_status="inactive"
+    local dovecot_status="inactive"
+
+    if systemctl is-active --quiet exim4 2>/dev/null; then
+        exim_status="active"
+    fi
+    if systemctl is-active --quiet dovecot 2>/dev/null; then
+        dovecot_status="active"
+    fi
+
+    echo "{\"status\":\"success\",\"exim4\":\"$exim_status\",\"dovecot\":\"$dovecot_status\"}"
+}
+
+case "$ACTION" in
+    domain-add)
+        mail_domain_add "$PARAM1" "$PARAM2"
+        ;;
+    domain-del)
+        mail_domain_del "$PARAM1"
+        ;;
+    account-add)
+        mail_account_add "$PARAM1" "$PARAM2" "$PARAM3" "$PARAM4"
+        ;;
+    account-del)
+        mail_account_del "$PARAM1" "$PARAM2"
+        ;;
+    account-passwd)
+        mail_account_passwd "$PARAM1" "$PARAM2"
+        ;;
+    account-quota)
+        mail_account_quota "$PARAM1" "$PARAM2"
+        ;;
+    forwarder-add)
+        mail_forwarder_add "$PARAM1" "$PARAM2"
+        ;;
+    forwarder-del)
+        mail_forwarder_del "$PARAM1"
+        ;;
+    dkim-get)
+        mail_dkim_get "$PARAM1"
+        ;;
+    status)
+        mail_status
+        ;;
+    *)
+        usage
+        ;;
+esac

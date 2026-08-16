@@ -136,6 +136,40 @@ class Database {
             // Ya existe
         }
 
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS mail_domains (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain_id INTEGER NOT NULL UNIQUE,
+                domain_name TEXT NOT NULL UNIQUE,
+                dkim_selector TEXT NOT NULL DEFAULT 'default',
+                dkim_record TEXT,
+                spf_record TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS mail_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mail_domain_id INTEGER NOT NULL,
+                account_user TEXT NOT NULL,
+                account_email TEXT NOT NULL UNIQUE,
+                quota_mb INTEGER NOT NULL DEFAULT 1024,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (mail_domain_id) REFERENCES mail_domains (id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS mail_forwarders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mail_domain_id INTEGER NOT NULL,
+                source_email TEXT NOT NULL,
+                destination_email TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (mail_domain_id) REFERENCES mail_domains (id) ON DELETE CASCADE
+            );
+        ");
+
         // Comprobar si falta la columna db_password_enc en instalaciones existentes
         try {
             $db->query("SELECT db_password_enc FROM databases LIMIT 1");

@@ -36,6 +36,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
                 </a>
             </li>
 
+            <li class="sidebar-item <?= (strpos($currentUri, "/mail") === 0) ? "active" : "" ?>">
+                <a class="sidebar-link" href="/mail">
+                    <i class="align-middle bi bi-envelope-at"></i>
+                    <span class="align-middle">Cuentas de Correo</span>
+                </a>
+            </li>
+
             <li class="sidebar-header">PHP &amp; Bases de Datos</li>
 
             <li class="sidebar-item <?= (strpos($currentUri, "/php") === 0) ? "active" : "" ?>">

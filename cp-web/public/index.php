@@ -83,6 +83,7 @@ use Pirulu\Modules\FileManager\Controllers\FileManagerController;
 use Pirulu\Modules\Firewall\Controllers\FirewallController;
 use Pirulu\Modules\Git\Controllers\GitController;
 use Pirulu\Modules\Server\Controllers\ServerController;
+use Pirulu\Modules\Mail\Controllers\MailController;
 
 $router = new Router();
 
@@ -94,6 +95,18 @@ $router->get("/logout", [AuthController::class, "logout"]);
 // Rutas de Dashboard
 $router->get("/", [DashboardController::class, "index"]);
 $router->get("/dashboard", [DashboardController::class, "index"]);
+
+// Rutas de Servidor de Correo (Exim4 + Dovecot + Webmail)
+$router->get("/mail", [MailController::class, "index"]);
+$router->get("/mail/enable/{id}", [MailController::class, "enable"]);
+$router->get("/mail/disable/{id}", [MailController::class, "disable"]);
+$router->get("/mail/domain/{id}", [MailController::class, "domain"]);
+$router->post("/mail/account/create/{id}", [MailController::class, "createAccount"]);
+$router->post("/mail/account/password", [MailController::class, "updatePassword"]);
+$router->post("/mail/account/quota", [MailController::class, "updateQuota"]);
+$router->get("/mail/account/delete/{id}", [MailController::class, "deleteAccount"]);
+$router->post("/mail/forwarder/create/{id}", [MailController::class, "createForwarder"]);
+$router->get("/mail/forwarder/delete/{id}", [MailController::class, "deleteForwarder"]);
 
 // Rutas de Dominios Web (Nginx / Apache)
 $router->get("/web", [WebController::class, "index"]);

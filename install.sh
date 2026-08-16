@@ -31,6 +31,7 @@ install_phpmyadmin
 deploy_pirulugcp_core
 setup_nginx_vhost
 setup_firewall_rules
+install_mail_stack
 
 echo "============================================================"
 echo "    Instalacion de PiruluGCP completada exitosamente!"

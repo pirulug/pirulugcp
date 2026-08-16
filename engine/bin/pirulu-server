@@ -21,7 +21,7 @@ PANEL_PUB_PATH="${PANEL_KEY_PATH}.pub"
 PANEL_DIR="${PIRULU_INSTALL_DIR:-/usr/local/pirulugcp}"
 
 usage() {
-    echo "Uso: pirulu-server <get-config|set-hostname|set-timezone|generate-key|get-key|connect-git|update-panel|status-git> [params...]"
+    echo "Uso: pirulu-server <get-config|set-hostname|set-panel-domain|set-timezone|generate-key|get-key|connect-git|update-panel|status-git> [params...]"
     exit 1
 }
 
@@ -65,100 +65,100 @@ get_panel_ssh_command() {
     fi
 }
 
-case "$ACTION" in
-    get-config)
-        HOSTNAME_VAL=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "localhost")
-        TIMEZONE_VAL=$(timedatectl show --property=Timezone --value 2>/dev/null)
-        if [ -z "$TIMEZONE_VAL" ]; then
-            if [ -f /etc/timezone ]; then
-                TIMEZONE_VAL=$(cat /etc/timezone | tr -d '\n')
-            elif [ -L /etc/localtime ]; then
-                TIMEZONE_VAL=$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')
-            else
-                TIMEZONE_VAL="UTC"
-            fi
-        fi
-
-        CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S %Z" 2>/dev/null)
-        SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-        [ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
-
-        PUBLIC_KEY=""
-        if [ -f "$PANEL_PUB_PATH" ]; then
-            PUBLIC_KEY=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
-        fi
-
-        GIT_CONNECTED=false
-        REMOTE_URL=""
-        CURRENT_BRANCH=""
-        LAST_COMMIT=""
-        LAST_AUTHOR=""
-        LAST_MSG=""
-
-        if [ -d "${PANEL_DIR}/.git" ]; then
-            GIT_CONNECTED=true
-            cd "$PANEL_DIR" || exit 1
-            REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
-            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-            LAST_COMMIT=$(git log -1 --format="%H" 2>/dev/null || echo "")
-            LAST_AUTHOR=$(git log -1 --format="%an" 2>/dev/null || echo "")
-            LAST_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
-        fi
-
-        PANEL_DOMAIN_VAL=""
-        if [ -f "/etc/nginx/sites-available/pirulugcp.conf" ]; then
-            PANEL_DOMAIN_VAL=$(grep -E '^\s*server_name\s+' /etc/nginx/sites-available/pirulugcp.conf | head -n 1 | awk '{print $2}' | sed 's/;//' | grep -v '^_$' || echo "")
-        fi
-
-        echo "{\"status\":\"success\",\"hostname\":\"$(json_escape "$HOSTNAME_VAL")\",\"panel_domain\":\"$(json_escape "$PANEL_DOMAIN_VAL")\",\"timezone\":\"$(json_escape "$TIMEZONE_VAL")\",\"current_time\":\"$(json_escape "$CURRENT_TIME")\",\"server_ip\":\"$(json_escape "$SERVER_IP")\",\"public_key\":\"$(json_escape "$PUBLIC_KEY")\",\"git_connected\":$GIT_CONNECTED,\"remote_url\":\"$(json_escape "$REMOTE_URL")\",\"branch\":\"$(json_escape "$CURRENT_BRANCH")\",\"last_commit\":\"$(json_escape "$LAST_COMMIT")\",\"last_author\":\"$(json_escape "$LAST_AUTHOR")\",\"last_message\":\"$(json_escape "$LAST_MSG")\"}"
-        ;;
-
-    set-hostname)
-        NEW_HOSTNAME="$PARAM1"
-        [ -z "$NEW_HOSTNAME" ] && exit_error "Nombre de host requerido"
-
-        # Validar caracteres validos para hostname o IP
-        NEW_HOSTNAME=$(echo "$NEW_HOSTNAME" | tr -cd 'a-zA-Z0-9.-')
-        [ -z "$NEW_HOSTNAME" ] && exit_error "Nombre de host invalido"
-
-        log_info "Configurando nuevo hostname del servidor: $NEW_HOSTNAME"
-
-        # Aplicar mediante hostnamectl si systemd esta activo, o directamente
-        if command -v hostnamectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-hostnamed 2>/dev/null; then
-            hostnamectl set-hostname "$NEW_HOSTNAME" 2>/dev/null || true
+server_get_config() {
+    local hostname_val
+    hostname_val=$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null || echo "localhost")
+    local timezone_val
+    timezone_val=$(timedatectl show --property=Timezone --value 2>/dev/null)
+    if [ -z "$timezone_val" ]; then
+        if [ -f /etc/timezone ]; then
+            timezone_val=$(cat /etc/timezone | tr -d '\n')
+        elif [ -L /etc/localtime ]; then
+            timezone_val=$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')
         else
-            hostname "$NEW_HOSTNAME" 2>/dev/null || true
+            timezone_val="UTC"
         fi
+    fi
 
-        echo "$NEW_HOSTNAME" > /etc/hostname
+    local current_time
+    current_time=$(date "+%Y-%m-%d %H:%M:%S %Z" 2>/dev/null)
+    local server_ip
+    server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$server_ip" ] && server_ip="127.0.0.1"
 
-        # Actualizar /etc/hosts si no existe la entrada
-        if ! grep -q "$NEW_HOSTNAME" /etc/hosts; then
-            sed -i "/127.0.1.1/d" /etc/hosts 2>/dev/null || true
-            echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts
-        fi
+    local public_key=""
+    if [ -f "$PANEL_PUB_PATH" ]; then
+        public_key=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
+    fi
 
-        echo "{\"status\":\"success\",\"message\":\"Nombre de servidor actualizado a $NEW_HOSTNAME\",\"hostname\":\"$(json_escape "$NEW_HOSTNAME")\"}"
-        ;;
+    local git_connected=false
+    local remote_url=""
+    local current_branch=""
+    local last_commit=""
+    local last_author=""
+    local last_msg=""
 
-    set-panel-domain)
-        PANEL_DOMAIN="$PARAM1"
-        PANEL_CONF="/etc/nginx/sites-available/pirulugcp.conf"
-        SOCK_FILE="/run/php/pirulugcp-panel.sock"
-        [ ! -S "$SOCK_FILE" ] && SOCK_FILE=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
+    if [ -d "${PANEL_DIR}/.git" ]; then
+        git_connected=true
+        cd "$PANEL_DIR" || exit 1
+        remote_url=$(git remote get-url origin 2>/dev/null || echo "")
+        current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        last_commit=$(git log -1 --format="%H" 2>/dev/null || echo "")
+        last_author=$(git log -1 --format="%an" 2>/dev/null || echo "")
+        last_msg=$(git log -1 --format="%s" 2>/dev/null || echo "")
+    fi
 
-        if [ -n "$PANEL_DOMAIN" ]; then
-            PANEL_DOMAIN=$(echo "$PANEL_DOMAIN" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
-        fi
+    local panel_domain_val=""
+    if [ -f "/etc/nginx/sites-available/pirulugcp.conf" ]; then
+        panel_domain_val=$(grep -E '^\s*server_name\s+' /etc/nginx/sites-available/pirulugcp.conf | head -n 1 | awk '{print $2}' | sed 's/;//' | grep -v '^_$' || echo "")
+    fi
 
-        log_info "Configurando dominio de acceso al panel: ${PANEL_DOMAIN:-ninguno}"
+    echo "{\"status\":\"success\",\"hostname\":\"$(json_escape "$hostname_val")\",\"panel_domain\":\"$(json_escape "$panel_domain_val")\",\"timezone\":\"$(json_escape "$timezone_val")\",\"current_time\":\"$(json_escape "$current_time")\",\"server_ip\":\"$(json_escape "$server_ip")\",\"public_key\":\"$(json_escape "$public_key")\",\"git_connected\":$git_connected,\"remote_url\":\"$(json_escape "$remote_url")\",\"branch\":\"$(json_escape "$current_branch")\",\"last_commit\":\"$(json_escape "$last_commit")\",\"last_author\":\"$(json_escape "$last_author")\",\"last_message\":\"$(json_escape "$last_msg")\"}"
+}
 
-        cat <<EOF > "$PANEL_CONF"
+server_set_hostname() {
+    local new_hostname="$1"
+    [ -z "$new_hostname" ] && exit_error "Nombre de host requerido"
+
+    new_hostname=$(echo "$new_hostname" | tr -cd 'a-zA-Z0-9.-')
+    [ -z "$new_hostname" ] && exit_error "Nombre de host invalido"
+
+    log_info "Configurando nuevo hostname del servidor: $new_hostname"
+
+    if command -v hostnamectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-hostnamed 2>/dev/null; then
+        hostnamectl set-hostname "$new_hostname" 2>/dev/null || true
+    else
+        hostname "$new_hostname" 2>/dev/null || true
+    fi
+
+    echo "$new_hostname" > /etc/hostname
+
+    if ! grep -q "$new_hostname" /etc/hosts; then
+        sed -i "/127.0.1.1/d" /etc/hosts 2>/dev/null || true
+        echo "127.0.1.1 $new_hostname" >> /etc/hosts
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Nombre de servidor actualizado a $new_hostname\",\"hostname\":\"$(json_escape "$new_hostname")\"}"
+}
+
+server_set_panel_domain() {
+    local panel_domain="$1"
+    local panel_conf="/etc/nginx/sites-available/pirulugcp.conf"
+    local sock_file="/run/php/pirulugcp-panel.sock"
+    [ ! -S "$sock_file" ] && sock_file=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
+
+    if [ -n "$panel_domain" ]; then
+        panel_domain=$(echo "$panel_domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+    fi
+
+    log_info "Configurando dominio de acceso al panel: ${panel_domain:-ninguno}"
+
+    cat <<EOF > "$panel_conf"
 # VirtualHost principal del panel PiruluGCP (Puerto 8083)
 server {
     listen 8083;
     listen [::]:8083;
-    server_name ${PANEL_DOMAIN:-_} _;
+    server_name ${panel_domain:-_} _;
 
     root ${PANEL_DIR}/cp-web/public;
     index index.php index.html;
@@ -173,7 +173,7 @@ server {
 
         location ~ ^/phpmyadmin/(.+\.php)$ {
             include fastcgi_params;
-            fastcgi_pass unix:${SOCK_FILE};
+            fastcgi_pass unix:${sock_file};
             fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         }
 
@@ -184,7 +184,7 @@ server {
 
     location ~ \.php$ {
         include fastcgi_params;
-        fastcgi_pass unix:${SOCK_FILE};
+        fastcgi_pass unix:${sock_file};
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     }
 
@@ -197,15 +197,23 @@ server {
 }
 EOF
 
-        # Si se configuro un subdominio/dominio, agregar proxy inverso en puerto 80
-        if [ -n "$PANEL_DOMAIN" ]; then
-            cat <<EOF >> "$PANEL_CONF"
+    # Si se configuro un subdominio/dominio, agregar proxy inverso en puerto 80 (HTTP) y 443 (HTTPS)
+    if [ -n "$panel_domain" ]; then
+        local cert_file="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+        local key_file="/etc/ssl/private/ssl-cert-snakeoil.key"
 
-# Acceso directo al panel mediante ${PANEL_DOMAIN} en puerto 80 (HTTP)
+        if [ -f "/etc/letsencrypt/live/${panel_domain}/fullchain.pem" ]; then
+            cert_file="/etc/letsencrypt/live/${panel_domain}/fullchain.pem"
+            key_file="/etc/letsencrypt/live/${panel_domain}/privkey.pem"
+        fi
+
+        cat <<EOF >> "$panel_conf"
+
+# Acceso directo al panel mediante ${panel_domain} en puerto 80 (HTTP)
 server {
     listen 80;
     listen [::]:80;
-    server_name ${PANEL_DOMAIN};
+    server_name ${panel_domain};
 
     location / {
         proxy_pass http://127.0.0.1:8083;
@@ -215,206 +223,262 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
+
+# Acceso directo al panel mediante ${panel_domain} en puerto 443 (HTTPS / SSL)
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${panel_domain};
+
+    ssl_certificate ${cert_file};
+    ssl_certificate_key ${key_file};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://127.0.0.1:8083;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
 EOF
-            # Agregar entrada en /etc/hosts si no existe
-            if ! grep -qw "$PANEL_DOMAIN" /etc/hosts 2>/dev/null; then
-                echo "127.0.0.1 $PANEL_DOMAIN" >> /etc/hosts
+        if ! grep -qw "$panel_domain" /etc/hosts 2>/dev/null; then
+            echo "127.0.0.1 $panel_domain" >> /etc/hosts
+        fi
+    fi
+
+    ln -sf "$panel_conf" /etc/nginx/sites-enabled/pirulugcp.conf
+
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+        echo "{\"status\":\"success\",\"message\":\"Dominio del panel configurado a ${panel_domain:-ninguno}\",\"panel_domain\":\"$(json_escape "$panel_domain")\"}"
+    else
+        log_error "Error de sintaxis en Nginx al configurar dominio del panel"
+        echo "{\"status\":\"error\",\"message\":\"Error de sintaxis en la configuracion de Nginx\"}"
+        exit 1
+    fi
+}
+
+server_set_timezone() {
+    local new_timezone="$1"
+    [ -z "$new_timezone" ] && exit_error "Zona horaria requerida"
+
+    local zoneinfo_file="/usr/share/zoneinfo/${new_timezone}"
+    if [ ! -f "$zoneinfo_file" ]; then
+        exit_error "Zona horaria no valida en el sistema: $new_timezone"
+    fi
+
+    log_info "Configurando nueva zona horaria: $new_timezone"
+
+    if command -v timedatectl >/dev/null 2>&1; then
+        timedatectl set-timezone "$new_timezone" 2>/dev/null || true
+    fi
+
+    ln -sf "$zoneinfo_file" /etc/localtime
+    echo "$new_timezone" > /etc/timezone 2>/dev/null || true
+
+    for ini in /etc/php/*/fpm/php.ini /etc/php/*/cli/php.ini; do
+        if [ -f "$ini" ]; then
+            if grep -q "^;*date.timezone" "$ini"; then
+                sed -i "s#^;*date.timezone =.*#date.timezone = ${new_timezone}#" "$ini"
+            else
+                echo "date.timezone = ${new_timezone}" >> "$ini"
             fi
         fi
+    done
 
-        ln -sf "$PANEL_CONF" /etc/nginx/sites-enabled/pirulugcp.conf
+    systemctl restart "php*-fpm" 2>/dev/null || true
+    if command -v systemctl >/dev/null 2>&1; then
+        (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+    fi
 
-        if nginx -t >/dev/null 2>&1; then
-            systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-            echo "{\"status\":\"success\",\"message\":\"Dominio del panel configurado a ${PANEL_DOMAIN:-ninguno}\",\"panel_domain\":\"$(json_escape "$PANEL_DOMAIN")\"}"
-        else
-            log_error "Error de sintaxis en Nginx al configurar dominio del panel"
-            echo "{\"status\":\"error\",\"message\":\"Error de sintaxis en la configuracion de Nginx\"}"
-            exit 1
-        fi
-        ;;
+    local current_time
+    current_time=$(date "+%Y-%m-%d %H:%M:%S %Z" 2>/dev/null)
+    echo "{\"status\":\"success\",\"message\":\"Zona horaria actualizada a $new_timezone\",\"timezone\":\"$(json_escape "$new_timezone")\",\"current_time\":\"$(json_escape "$current_time")\"}"
+}
 
-    set-timezone)
-        NEW_TIMEZONE="$PARAM1"
-        [ -z "$NEW_TIMEZONE" ] && exit_error "Zona horaria requerida"
+server_generate_key() {
+    setup_panel_ssh_env
+    rm -f "$PANEL_KEY_PATH" "$PANEL_PUB_PATH"
 
-        ZONEINFO_FILE="/usr/share/zoneinfo/${NEW_TIMEZONE}"
-        if [ ! -f "$ZONEINFO_FILE" ]; then
-            exit_error "Zona horaria no valida en el sistema: $NEW_TIMEZONE"
-        fi
+    log_info "Generando nueva clave SSH Ed25519 para actualizaciones del panel..."
+    ssh-keygen -t ed25519 -C "panel-deploy@pirulugcp" -f "$PANEL_KEY_PATH" -N "" >/dev/null 2>&1
+    chmod 600 "$PANEL_KEY_PATH"
+    chmod 644 "$PANEL_PUB_PATH"
 
-        log_info "Configurando nueva zona horaria: $NEW_TIMEZONE"
+    local pub_key
+    pub_key=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
+    echo "{\"status\":\"success\",\"message\":\"Clave SSH de actualizacion generada exitosamente\",\"public_key\":\"$(json_escape "$pub_key")\"}"
+}
 
-        # Configurar en el sistema
-        if command -v timedatectl >/dev/null 2>&1; then
-            timedatectl set-timezone "$NEW_TIMEZONE" 2>/dev/null || true
-        fi
-
-        ln -sf "$ZONEINFO_FILE" /etc/localtime
-        echo "$NEW_TIMEZONE" > /etc/timezone 2>/dev/null || true
-
-        # Actualizar directiva date.timezone en todos los php.ini de PHP-FPM y CLI
-        for ini in /etc/php/*/fpm/php.ini /etc/php/*/cli/php.ini; do
-            if [ -f "$ini" ]; then
-                if grep -q "^;*date.timezone" "$ini"; then
-                    sed -i "s#^;*date.timezone =.*#date.timezone = ${NEW_TIMEZONE}#" "$ini"
-                else
-                    echo "date.timezone = ${NEW_TIMEZONE}" >> "$ini"
-                fi
-            fi
-        done
-
-        # Reiniciar servicios PHP-FPM para aplicar la nueva zona horaria
-        systemctl restart "php*-fpm" 2>/dev/null || true
-        if command -v systemctl >/dev/null 2>&1; then
-            (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
-            disown 2>/dev/null || true
-        fi
-
-        CURRENT_TIME=$(date "+%Y-%m-%d %H:%M:%S %Z" 2>/dev/null)
-        echo "{\"status\":\"success\",\"message\":\"Zona horaria actualizada a $NEW_TIMEZONE\",\"timezone\":\"$(json_escape "$NEW_TIMEZONE")\",\"current_time\":\"$(json_escape "$CURRENT_TIME")\"}"
-        ;;
-
-    generate-key)
-        setup_panel_ssh_env
-        rm -f "$PANEL_KEY_PATH" "$PANEL_PUB_PATH"
-
-        log_info "Generando nueva clave SSH Ed25519 para actualizaciones del panel..."
+server_get_key() {
+    setup_panel_ssh_env
+    if [ ! -f "$PANEL_PUB_PATH" ]; then
         ssh-keygen -t ed25519 -C "panel-deploy@pirulugcp" -f "$PANEL_KEY_PATH" -N "" >/dev/null 2>&1
         chmod 600 "$PANEL_KEY_PATH"
         chmod 644 "$PANEL_PUB_PATH"
+    fi
+    local pub_key
+    pub_key=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
+    echo "{\"status\":\"success\",\"public_key\":\"$(json_escape "$pub_key")\"}"
+}
 
-        PUB_KEY=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
-        echo "{\"status\":\"success\",\"message\":\"Clave SSH de actualizacion generada exitosamente\",\"public_key\":\"$(json_escape "$PUB_KEY")\"}"
+server_connect_git() {
+    local repo_url="$1"
+    local branch="${2:-main}"
+    local is_private="${3:-0}"
+
+    [ -z "$repo_url" ] && exit_error "URL del repositorio requerida"
+
+    setup_panel_ssh_env
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_SSH_COMMAND="$(get_panel_ssh_command)"
+
+    cd "$PANEL_DIR" || exit 1
+
+    if [ ! -d "${PANEL_DIR}/.git" ]; then
+        git init >/dev/null 2>&1
+        git config core.fileMode false
+        git remote add origin "$repo_url" >/dev/null 2>&1 || git remote set-url origin "$repo_url"
+    else
+        git remote set-url origin "$repo_url" >/dev/null 2>&1 || git remote add origin "$repo_url"
+    fi
+
+    log_info "Vinculando panel PiruluGCP a repositorio remoto $repo_url (rama $branch)..."
+
+    local fetch_out
+    fetch_out=$(git fetch --prune origin 2>&1)
+    local fetch_code=$?
+
+    if [ $fetch_code -ne 0 ]; then
+        log_error "Error al obtener ramas remotas del panel: $fetch_out"
+        echo "{\"status\":\"error\",\"message\":\"Fallo al conectar con el repositorio. Verifica la URL y la Clave SSH en GitHub.\",\"log\":\"$(json_escape "$fetch_out")\"}"
+        exit 1
+    fi
+
+    if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+        if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
+            branch="main"
+        elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+            branch="master"
+        fi
+    fi
+
+    echo "{\"status\":\"success\",\"message\":\"Repositorio de actualizaciones vinculado correctamente\",\"branch\":\"$(json_escape "$branch")\"}"
+}
+
+server_update_panel() {
+    local branch="${1:-main}"
+
+    setup_panel_ssh_env
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_SSH_COMMAND="$(get_panel_ssh_command)"
+
+    cd "$PANEL_DIR" || exit 1
+
+    if [ ! -d "${PANEL_DIR}/.git" ]; then
+        exit_error "El directorio del panel no esta vinculado a un repositorio Git"
+    fi
+
+    log_info "Iniciando actualizacion del panel PiruluGCP..."
+
+    local fetch_out
+    fetch_out=$(git fetch --prune origin 2>&1)
+    local fetch_code=$?
+
+    if [ $fetch_code -ne 0 ]; then
+        log_error "Error en git fetch para actualizacion del panel: $fetch_out"
+        echo "{\"status\":\"error\",\"message\":\"Error al descargar actualizaciones desde GitHub\",\"log\":\"$(json_escape "$fetch_out")\"}"
+        exit 1
+    fi
+
+    if ! git rev-parse --verify "origin/${branch}" >/dev/null 2>&1; then
+        if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
+            branch="main"
+        elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+            branch="master"
+        fi
+    fi
+
+    local checkout_out
+    checkout_out=$(git checkout -B "$branch" "origin/${branch}" --force 2>&1)
+    local reset_out
+    reset_out=$(git reset --hard "origin/${branch}" 2>&1)
+    local output="${fetch_out}"$'\n'"${checkout_out}"$'\n'"${reset_out}"
+
+    chmod +x "${PANEL_DIR}/engine/bin/"* 2>/dev/null || true
+    chown -R www-data:www-data "${PANEL_DIR}/cp-web" "${PANEL_DIR}/config" /var/lib/pirulugcp /var/log/pirulugcp 2>/dev/null || true
+
+    if command -v systemctl >/dev/null 2>&1; then
+        (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+    fi
+
+    local commit_hash
+    commit_hash=$(git log -1 --format="%H" 2>/dev/null || echo "")
+    local commit_author
+    commit_author=$(git log -1 --format="%an" 2>/dev/null || echo "")
+    local commit_msg
+    commit_msg=$(git log -1 --format="%s" 2>/dev/null || echo "")
+
+    log_info "Panel PiruluGCP actualizado con exito al commit $commit_hash"
+    echo "{\"status\":\"success\",\"message\":\"Panel actualizado exitosamente\",\"branch\":\"$(json_escape "$branch")\",\"commit_hash\":\"$(json_escape "$commit_hash")\",\"commit_author\":\"$(json_escape "$commit_author")\",\"commit_message\":\"$(json_escape "$commit_msg")\",\"log\":\"$(json_escape "$output")\"}"
+}
+
+server_status_git() {
+    if [ ! -d "${PANEL_DIR}/.git" ]; then
+        echo "{\"status\":\"not-connected\",\"message\":\"No hay repositorio de actualizaciones configurado\"}"
+        exit 0
+    fi
+
+    cd "$PANEL_DIR" || exit 1
+    local remote_url
+    remote_url=$(git remote get-url origin 2>/dev/null || echo "")
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    local commit_hash
+    commit_hash=$(git log -1 --format="%H" 2>/dev/null || echo "")
+    local commit_author
+    commit_author=$(git log -1 --format="%an" 2>/dev/null || echo "")
+    local commit_msg
+    commit_msg=$(git log -1 --format="%s" 2>/dev/null || echo "")
+    local commit_date
+    commit_date=$(git log -1 --format="%cd" 2>/dev/null || echo "")
+
+    echo "{\"status\":\"success\",\"connected\":true,\"remote_url\":\"$(json_escape "$remote_url")\",\"branch\":\"$(json_escape "$current_branch")\",\"commit_hash\":\"$(json_escape "$commit_hash")\",\"commit_author\":\"$(json_escape "$commit_author")\",\"commit_message\":\"$(json_escape "$commit_msg")\",\"commit_date\":\"$(json_escape "$commit_date")\"}"
+}
+
+case "$ACTION" in
+    get-config)
+        server_get_config
         ;;
-
+    set-hostname)
+        server_set_hostname "$PARAM1"
+        ;;
+    set-panel-domain)
+        server_set_panel_domain "$PARAM1"
+        ;;
+    set-timezone)
+        server_set_timezone "$PARAM1"
+        ;;
+    generate-key)
+        server_generate_key
+        ;;
     get-key)
-        setup_panel_ssh_env
-        if [ ! -f "$PANEL_PUB_PATH" ]; then
-            ssh-keygen -t ed25519 -C "panel-deploy@pirulugcp" -f "$PANEL_KEY_PATH" -N "" >/dev/null 2>&1
-            chmod 600 "$PANEL_KEY_PATH"
-            chmod 644 "$PANEL_PUB_PATH"
-        fi
-        PUB_KEY=$(cat "$PANEL_PUB_PATH" | tr -d '\r\n')
-        echo "{\"status\":\"success\",\"public_key\":\"$(json_escape "$PUB_KEY")\"}"
+        server_get_key
         ;;
-
     connect-git)
-        REPO_URL="$PARAM1"
-        BRANCH="${PARAM2:-main}"
-        IS_PRIVATE="${PARAM3:-0}"
-
-        [ -z "$REPO_URL" ] && exit_error "URL del repositorio requerida"
-
-        setup_panel_ssh_env
-        export GIT_TERMINAL_PROMPT=0
-        export GIT_SSH_COMMAND="$(get_panel_ssh_command)"
-
-        cd "$PANEL_DIR" || exit 1
-
-        # Inicializar repositorio si no existe .git
-        if [ ! -d "${PANEL_DIR}/.git" ]; then
-            git init >/dev/null 2>&1
-            git config core.fileMode false
-            git remote add origin "$REPO_URL" >/dev/null 2>&1 || git remote set-url origin "$REPO_URL"
-        else
-            git remote set-url origin "$REPO_URL" >/dev/null 2>&1 || git remote add origin "$REPO_URL"
-        fi
-
-        log_info "Vinculando panel PiruluGCP a repositorio remoto $REPO_URL (rama $BRANCH)..."
-
-        FETCH_OUT=$(git fetch --prune origin 2>&1)
-        FETCH_CODE=$?
-
-        if [ $FETCH_CODE -ne 0 ]; then
-            log_error "Error al obtener ramas remotas del panel: $FETCH_OUT"
-            echo "{\"status\":\"error\",\"message\":\"Fallo al conectar con el repositorio. Verifica la URL y la Clave SSH en GitHub.\",\"log\":\"$(json_escape "$FETCH_OUT")\"}"
-            exit 1
-        fi
-
-        # Detectar fallback de rama si no existe
-        if ! git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1; then
-            if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
-                BRANCH="main"
-            elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
-                BRANCH="master"
-            fi
-        fi
-
-        echo "{\"status\":\"success\",\"message\":\"Repositorio de actualizaciones vinculado correctamente\",\"branch\":\"$(json_escape "$BRANCH")\"}"
+        server_connect_git "$PARAM1" "$PARAM2" "$PARAM3"
         ;;
-
     update-panel)
-        BRANCH="${PARAM1:-main}"
-
-        setup_panel_ssh_env
-        export GIT_TERMINAL_PROMPT=0
-        export GIT_SSH_COMMAND="$(get_panel_ssh_command)"
-
-        cd "$PANEL_DIR" || exit 1
-
-        if [ ! -d "${PANEL_DIR}/.git" ]; then
-            exit_error "El directorio del panel no esta vinculado a un repositorio Git"
-        fi
-
-        log_info "Iniciando actualizacion del panel PiruluGCP..."
-
-        FETCH_OUT=$(git fetch --prune origin 2>&1)
-        FETCH_CODE=$?
-
-        if [ $FETCH_CODE -ne 0 ]; then
-            log_error "Error en git fetch para actualizacion del panel: $FETCH_OUT"
-            echo "{\"status\":\"error\",\"message\":\"Error al descargar actualizaciones desde GitHub\",\"log\":\"$(json_escape "$FETCH_OUT")\"}"
-            exit 1
-        fi
-
-        if ! git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1; then
-            if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
-                BRANCH="main"
-            elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
-                BRANCH="master"
-            fi
-        fi
-
-        CHECKOUT_OUT=$(git checkout -B "$BRANCH" "origin/${BRANCH}" --force 2>&1)
-        RESET_OUT=$(git reset --hard "origin/${BRANCH}" 2>&1)
-        OUTPUT="${FETCH_OUT}"$'\n'"${CHECKOUT_OUT}"$'\n'"${RESET_OUT}"
-
-        # Re-aplicar permisos de ejecucion y de almacenamiento
-        chmod +x "${PANEL_DIR}/engine/bin/"* 2>/dev/null || true
-        chown -R www-data:www-data "${PANEL_DIR}/cp-web" "${PANEL_DIR}/config" /var/lib/pirulugcp /var/log/pirulugcp 2>/dev/null || true
-
-        # Reiniciar el servicio PHP-FPM del panel de forma asincrona para no cortar la conexion HTTP
-        if command -v systemctl >/dev/null 2>&1; then
-            (sleep 1 && (systemctl reload pirulugcp-php || systemctl restart pirulugcp-php)) >/dev/null 2>&1 &
-            disown 2>/dev/null || true
-        fi
-
-        COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null || echo "")
-        COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null || echo "")
-        COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
-
-        log_info "Panel PiruluGCP actualizado con exito al commit $COMMIT_HASH"
-        echo "{\"status\":\"success\",\"message\":\"Panel actualizado exitosamente\",\"branch\":\"$(json_escape "$BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"log\":\"$(json_escape "$OUTPUT")\"}"
+        server_update_panel "$PARAM1"
         ;;
-
     status-git)
-        if [ ! -d "${PANEL_DIR}/.git" ]; then
-            echo "{\"status\":\"not-connected\",\"message\":\"No hay repositorio de actualizaciones configurado\"}"
-            exit 0
-        fi
-
-        cd "$PANEL_DIR" || exit 1
-        REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
-        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-        COMMIT_HASH=$(git log -1 --format="%H" 2>/dev/null || echo "")
-        COMMIT_AUTHOR=$(git log -1 --format="%an" 2>/dev/null || echo "")
-        COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
-        COMMIT_DATE=$(git log -1 --format="%cd" 2>/dev/null || echo "")
-
-        echo "{\"status\":\"success\",\"connected\":true,\"remote_url\":\"$(json_escape "$REMOTE_URL")\",\"branch\":\"$(json_escape "$CURRENT_BRANCH")\",\"commit_hash\":\"$(json_escape "$COMMIT_HASH")\",\"commit_author\":\"$(json_escape "$COMMIT_AUTHOR")\",\"commit_message\":\"$(json_escape "$COMMIT_MSG")\",\"commit_date\":\"$(json_escape "$COMMIT_DATE")\"}"
+        server_status_git
         ;;
-
     *)
         usage
         ;;

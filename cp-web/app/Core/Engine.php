@@ -233,6 +233,35 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-mail") {
+            if ($action === "status") {
+                return [
+                    "status"  => "success",
+                    "exim4"   => "active",
+                    "dovecot" => "active"
+                ];
+            }
+            if ($action === "dkim-get") {
+                return [
+                    "status"       => "success",
+                    "domain"       => $args[1] ?? "midominio.com",
+                    "selector"     => "default",
+                    "dkim_record"  => "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsimulatedKeyExample...",
+                    "spf_record"   => "v=spf1 a mx ip4:192.168.1.100 ~all",
+                    "dmarc_record" => "v=DMARC1; p=none; sp=none; aspf=r;",
+                    "server_ip"    => "192.168.1.100"
+                ];
+            }
+            return [
+                "status"        => "success",
+                "message"       => "Operacion de correo completada en modo simulacion",
+                "webmail_url"   => "http://webmail." . ($args[1] ?? "midominio.com"),
+                "spf_record"    => "v=spf1 a mx ip4:192.168.1.100 ~all",
+                "dkim_selector" => "default",
+                "dkim_record"   => "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsimulatedKeyExample..."
+            ];
+        }
+
         return [
             "status"  => "success",
             "message" => "Operacion completada exitosamente (Modo desarrollo)"
