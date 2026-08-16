@@ -25,7 +25,7 @@ tls_on_connect_ports = 465
 # Certificados SSL/TLS
 tls_certificate = /etc/ssl/certs/ssl-cert-snakeoil.pem
 tls_privatekey = /etc/ssl/private/ssl-cert-snakeoil.key
-tls_require_ciphers = HIGH:!aNULL:!MD5
+tls_require_ciphers = NORMAL
 
 # Firma DKIM dinamica por dominio
 DKIM_DOMAIN = ${sender_address_domain}
