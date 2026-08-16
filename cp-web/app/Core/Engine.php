@@ -223,6 +223,27 @@ class Engine {
             ];
         }
 
+        if ($binary === "pirulu-cron") {
+            if ($action === "status") {
+                return [
+                    "status"       => "success",
+                    "cron_service" => "active"
+                ];
+            }
+            if ($action === "run") {
+                return [
+                    "status"       => "success",
+                    "exit_code"    => 0,
+                    "duration_sec" => 1,
+                    "output"       => "Ejecución simulada exitosa de comando Cron."
+                ];
+            }
+            return [
+                "status"  => "success",
+                "message" => "Crontab sincronizado correctamente"
+            ];
+        }
+
         if ($binary === "pirulu-server") {
             if ($action === "get-config") {
                 return [

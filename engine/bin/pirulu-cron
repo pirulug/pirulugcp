@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Gestor de Tareas Cron (Crontab Scheduler) para PiruluGCP
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+PARAM1="$2"
+PARAM2="$3"
+
+usage() {
+    echo "Uso: pirulu-cron <status|sync|run|restart> [argumentos]"
+    echo "Acciones:"
+    echo "  status                  Verificar estado del daemon cron"
+    echo "  sync <user> <b64_cron>  Sincronizar crontab del usuario desde base64"
+    echo "  run <user> <command>    Ejecutar comando cron inmediatamente"
+    echo "  restart                 Reiniciar servicio de cron"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n' | sed 's/\\n$//'
+}
+
+cron_status() {
+    local status="inactive"
+    if systemctl is-active --quiet cron 2>/dev/null || systemctl is-active --quiet crond 2>/dev/null; then
+        status="active"
+    fi
+    echo "{\"status\":\"success\",\"cron_service\":\"$status\"}"
+}
+
+cron_sync() {
+    local user="$1"
+    local b64_content="$2"
+
+    [ -z "$user" ] && exit_error "Usuario requerido para sincronizar crontab"
+
+    # Si el usuario no existe en el sistema, usar admin o root
+    if ! id -u "$user" >/dev/null 2>&1; then
+        user="admin"
+    fi
+    if ! id -u "$user" >/dev/null 2>&1; then
+        user="root"
+    fi
+
+    local temp_cron
+    temp_cron=$(mktemp)
+
+    if [ -n "$b64_content" ]; then
+        echo "$b64_content" | base64 -d > "$temp_cron"
+    else
+        cat > "$temp_cron"
+    fi
+
+    # Asegurar salto de linea final en crontab
+    echo "" >> "$temp_cron"
+
+    if crontab -u "$user" "$temp_cron" >/dev/null 2>&1; then
+        rm -f "$temp_cron"
+        log_info "Crontab de $user sincronizado exitosamente"
+        echo "{\"status\":\"success\",\"message\":\"Crontab de $user sincronizado exitosamente\"}"
+    else
+        rm -f "$temp_cron"
+        exit_error "Error al instalar crontab para $user"
+    fi
+}
+
+cron_run() {
+    local user="$1"
+    local cmd="$2"
+
+    [ -z "$cmd" ] && exit_error "Comando requerido para ejecucion"
+
+    if ! id -u "$user" >/dev/null 2>&1; then
+        user="admin"
+    fi
+    if ! id -u "$user" >/dev/null 2>&1; then
+        user="root"
+    fi
+
+    local start_time
+    start_time=$(date +%s)
+
+    local output
+    # Ejecutar comando como el usuario indicado con timeout de 60s
+    output=$(su -s /bin/bash "$user" -c "$cmd" 2>&1)
+    local exit_code=$?
+
+    local end_time
+    end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    echo "{\"status\":\"success\",\"exit_code\":$exit_code,\"duration_sec\":$duration,\"output\":\"$(json_escape "$output")\"}"
+}
+
+cron_restart() {
+    systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null || true
+    echo "{\"status\":\"success\",\"message\":\"Servicio cron reiniciado\"}"
+}
+
+case "$ACTION" in
+    status)
+        cron_status
+        ;;
+    sync)
+        cron_sync "$PARAM1" "$PARAM2"
+        ;;
+    run)
+        cron_run "$PARAM1" "$PARAM2"
+        ;;
+    restart)
+        cron_restart
+        ;;
+    *)
+        usage
+        ;;
+esac

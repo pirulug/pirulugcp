@@ -84,6 +84,7 @@ use Pirulu\Modules\Firewall\Controllers\FirewallController;
 use Pirulu\Modules\Git\Controllers\GitController;
 use Pirulu\Modules\Server\Controllers\ServerController;
 use Pirulu\Modules\Mail\Controllers\MailController;
+use Pirulu\Modules\Cron\Controllers\CronController;
 
 $router = new Router();
 
@@ -187,6 +188,14 @@ $router->post("/logs/clear", [LogsController::class, "clear"]);
 $router->get("/firewall", [FirewallController::class, "index"]);
 $router->post("/firewall/ban", [FirewallController::class, "banIp"]);
 $router->post("/firewall/unban", [FirewallController::class, "unbanIp"]);
+
+// Rutas de Programador de Tareas Cron
+$router->get("/cron", [CronController::class, "index"]);
+$router->post("/cron/store", [CronController::class, "store"]);
+$router->post("/cron/update/{id}", [CronController::class, "update"]);
+$router->get("/cron/toggle/{id}", [CronController::class, "toggle"]);
+$router->get("/cron/delete/{id}", [CronController::class, "delete"]);
+$router->post("/cron/run/{id}", [CronController::class, "run_now"]);
 
 // Despachar la peticion
 $router->dispatch();

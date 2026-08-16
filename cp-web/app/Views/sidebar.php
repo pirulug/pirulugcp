@@ -82,6 +82,13 @@ $currentUri = parse_url($_SERVER["REQUEST_URI"] ?? "/", PHP_URL_PATH);
                 </a>
             </li>
 
+            <li class="sidebar-item <?= (strpos($currentUri, "/cron") === 0) ? "active" : "" ?>">
+                <a class="sidebar-link" href="/cron">
+                    <i class="align-middle bi bi-clock-history"></i>
+                    <span class="align-middle">Tareas Cron</span>
+                </a>
+            </li>
+
             <li class="sidebar-item <?= (strpos($currentUri, "/firewall") === 0) ? "active" : "" ?>">
                 <a class="sidebar-link" href="/firewall">
                     <i class="align-middle bi bi-shield-lock"></i>

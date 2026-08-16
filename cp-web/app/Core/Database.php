@@ -168,6 +168,24 @@ class Database {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (mail_domain_id) REFERENCES mail_domains (id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS cron_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL DEFAULT 1,
+                domain_id INTEGER,
+                command TEXT NOT NULL,
+                minute TEXT NOT NULL DEFAULT '*',
+                hour TEXT NOT NULL DEFAULT '*',
+                day TEXT NOT NULL DEFAULT '*',
+                month TEXT NOT NULL DEFAULT '*',
+                weekday TEXT NOT NULL DEFAULT '*',
+                description TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE SET NULL
+            );
         ");
 
         // Comprobar si falta la columna db_password_enc en instalaciones existentes
