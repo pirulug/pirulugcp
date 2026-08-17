@@ -43,12 +43,12 @@
             <form action="/login" method="POST">
               <div class="mb-3">
                 <label for="username" class="form-label">Usuario <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="username" name="username" placeholder="admin" required autofocus value="admin">
+                <input type="text" class="form-control" id="username" name="username" placeholder="Ingresa tu usuario" required autofocus>
               </div>
 
               <div class="mb-3">
                 <label for="user_password" class="form-label">Contraseña <span class="text-danger">*</span></label>
-                <input type="password" class="form-control" id="user_password" name="password" placeholder="Tu contraseña" data-pr-toggle-password required value="admin123">
+                <input type="password" class="form-control" id="user_password" name="password" placeholder="Ingresa tu contraseña" data-pr-toggle-password required>
               </div>
 
               <?php if (!empty($cfTurnstileEnabled) && !empty($cfSiteKey)): ?>
@@ -64,10 +64,6 @@
                 </button>
               </div>
             </form>
-
-            <div class="text-center mt-3">
-              <span class="text-muted small">Credenciales por defecto: <code>admin</code> / <code>admin123</code></span>
-            </div>
           </div>
         </div>
 

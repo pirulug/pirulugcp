@@ -233,6 +233,14 @@ EOF
             cert_file="/etc/letsencrypt/live/${panel_domain}/fullchain.pem"
             key_file="/etc/letsencrypt/live/${panel_domain}/privkey.pem"
             has_ssl=true
+        else
+            if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+                mkdir -p /etc/ssl/certs /etc/ssl/private
+                openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+                    -keyout "$key_file" \
+                    -out "$cert_file" \
+                    -subj "/CN=${panel_domain}" >/dev/null 2>&1 || true
+            fi
         fi
 
         if [ "$force_https" = "1" ] && [ "$has_ssl" = true ]; then
