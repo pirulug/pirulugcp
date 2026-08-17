@@ -432,7 +432,10 @@ PiruluGCP cuenta con comandos CLI ubicados en `/usr/local/pirulugcp/engine/bin/`
 | `pirulu-system restart <servicio>` | Reinicia un servicio (`nginx`, `apache2`, `mariadb`, `php8.2-fpm`, etc.). |
 | `pirulu-web add-domain <dominio> <usuario> [php_version]` | Crea un nuevo VirtualHost con Nginx, Apache y PHP-FPM. |
 | `pirulu-web delete-domain <dominio>` | Elimina un dominio y sus configuraciones asociadas. |
-| `pirulu-ssl issue <dominio> [email]` | Emite e instala un certificado SSL Let's Encrypt para un dominio. |
+| `pirulu-ssl issue <dominio> [email]` | Emite e instala un certificado SSL Let's Encrypt para un dominio de cliente. |
+| `pirulu-server set-panel-domain <subdominio> [force_https]` | Configura el subdominio de acceso directo al panel en Nginx (puertos 80 y 443). |
+| `pirulu-server issue-panel-ssl <subdominio> [email] [force_https]` | Emite e instala un certificado SSL Let's Encrypt para el subdominio de acceso al panel. |
+| `pirulu-server delete-panel-ssl <subdominio>` | Elimina el certificado SSL del panel y revierte el acceso a HTTP. |
 | `pirulu-db create <nombre_bd> <usuario> <password>` | Crea una base de datos MariaDB con usuario y privilegios. |
 | `pirulu-php list` | Lista todas las versiones de PHP instaladas y activas. |
 | `pirulu-mail add-domain <dominio>` | Configura el stack de correo para un dominio especifico. |

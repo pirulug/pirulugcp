@@ -166,6 +166,9 @@ class Database {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         server_hostname TEXT NOT NULL DEFAULT 'localhost',
         panel_domain TEXT DEFAULT '',
+        panel_ssl_enabled INTEGER NOT NULL DEFAULT 0,
+        panel_ssl_force_https INTEGER NOT NULL DEFAULT 0,
+        panel_ssl_email TEXT DEFAULT '',
         server_timezone TEXT NOT NULL DEFAULT 'UTC',
         panel_git_repo TEXT,
         panel_git_branch TEXT NOT NULL DEFAULT 'main',
@@ -181,6 +184,24 @@ class Database {
 
     try {
       $db->exec("ALTER TABLE server_settings ADD COLUMN panel_domain TEXT DEFAULT ''");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN panel_ssl_enabled INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN panel_ssl_force_https INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE server_settings ADD COLUMN panel_ssl_email TEXT DEFAULT ''");
     } catch (PDOException $e) {
       // Columna ya existe
     }
@@ -229,8 +250,8 @@ class Database {
 
     try {
       $db->exec("
-        INSERT OR IGNORE INTO server_settings (id, server_hostname, panel_domain, server_timezone, panel_git_branch, panel_git_is_private, panel_auto_update, cf_turnstile_enabled, cf_turnstile_site_key, cf_turnstile_secret_key)
-        VALUES (1, 'localhost', '', 'UTC', 'main', 1, 0, 0, '', '');
+        INSERT OR IGNORE INTO server_settings (id, server_hostname, panel_domain, panel_ssl_enabled, panel_ssl_force_https, panel_ssl_email, server_timezone, panel_git_branch, panel_git_is_private, panel_auto_update, cf_turnstile_enabled, cf_turnstile_site_key, cf_turnstile_secret_key)
+        VALUES (1, 'localhost', '', 0, 0, '', 'UTC', 'main', 1, 0, 0, '', '');
       ");
     } catch (PDOException $e) {
       // Ya existe

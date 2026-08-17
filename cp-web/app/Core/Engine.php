@@ -401,6 +401,8 @@ class Engine {
         return [
           "status"        => "success",
           "hostname"      => "panel.pirulugcp.local",
+          "panel_domain"  => "panel.pirulugcp.local",
+          "ssl_active"    => true,
           "timezone"      => "America/Lima",
           "current_time"  => date("Y-m-d H:i:s T"),
           "server_ip"     => "192.168.1.100",
@@ -411,6 +413,22 @@ class Engine {
           "last_commit"   => "b487976e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
           "last_author"   => "Pirulug",
           "last_message"  => "feat(server): Server configuration and panel updates"
+        ];
+      }
+      if ($action === "issue-panel-ssl") {
+        $domain = $args[1] ?? "panel.pirulugcp.local";
+        return [
+          "status"  => "success",
+          "message" => "Certificado Let's Encrypt instalado y activado exitosamente para " . $domain,
+          "domain"  => $domain
+        ];
+      }
+      if ($action === "delete-panel-ssl") {
+        $domain = $args[1] ?? "panel.pirulugcp.local";
+        return [
+          "status"  => "success",
+          "message" => "Certificado SSL del panel removido exitosamente",
+          "domain"  => $domain
         ];
       }
       if ($action === "generate-key" || $action === "get-key") {

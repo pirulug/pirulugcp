@@ -21,7 +21,7 @@ PANEL_PUB_PATH="${PANEL_KEY_PATH}.pub"
 PANEL_DIR="${PIRULU_INSTALL_DIR:-/usr/local/pirulugcp}"
 
 usage() {
-    echo "Uso: pirulu-server <get-config|set-hostname|set-panel-domain|set-timezone|generate-key|get-key|connect-git|update-panel|status-git> [params...]"
+    echo "Uso: pirulu-server <get-config|set-hostname|set-panel-domain|issue-panel-ssl|delete-panel-ssl|set-timezone|generate-key|get-key|connect-git|update-panel|status-git> [params...]"
     exit 1
 }
 
@@ -113,7 +113,12 @@ server_get_config() {
         panel_domain_val=$(grep -E '^\s*server_name\s+' /etc/nginx/sites-available/pirulugcp.conf | head -n 1 | awk '{print $2}' | sed 's/;//' | grep -v '^_$' || echo "")
     fi
 
-    echo "{\"status\":\"success\",\"hostname\":\"$(json_escape "$hostname_val")\",\"panel_domain\":\"$(json_escape "$panel_domain_val")\",\"timezone\":\"$(json_escape "$timezone_val")\",\"current_time\":\"$(json_escape "$current_time")\",\"server_ip\":\"$(json_escape "$server_ip")\",\"public_key\":\"$(json_escape "$public_key")\",\"git_connected\":$git_connected,\"remote_url\":\"$(json_escape "$remote_url")\",\"branch\":\"$(json_escape "$current_branch")\",\"last_commit\":\"$(json_escape "$last_commit")\",\"last_author\":\"$(json_escape "$last_author")\",\"last_message\":\"$(json_escape "$last_msg")\"}"
+    local ssl_active=false
+    if [ -n "$panel_domain_val" ] && [ -f "/etc/letsencrypt/live/${panel_domain_val}/fullchain.pem" ]; then
+        ssl_active=true
+    fi
+
+    echo "{\"status\":\"success\",\"hostname\":\"$(json_escape "$hostname_val")\",\"panel_domain\":\"$(json_escape "$panel_domain_val")\",\"ssl_active\":$ssl_active,\"timezone\":\"$(json_escape "$timezone_val")\",\"current_time\":\"$(json_escape "$current_time")\",\"server_ip\":\"$(json_escape "$server_ip")\",\"public_key\":\"$(json_escape "$public_key")\",\"git_connected\":$git_connected,\"remote_url\":\"$(json_escape "$remote_url")\",\"branch\":\"$(json_escape "$current_branch")\",\"last_commit\":\"$(json_escape "$last_commit")\",\"last_author\":\"$(json_escape "$last_author")\",\"last_message\":\"$(json_escape "$last_msg")\"}"
 }
 
 server_set_hostname() {
@@ -143,6 +148,7 @@ server_set_hostname() {
 
 server_set_panel_domain() {
     local panel_domain="$1"
+    local force_https="${2:-0}"
     local panel_conf="/etc/nginx/sites-available/pirulugcp.conf"
     local sock_file="/run/php/pirulugcp-panel.sock"
     [ ! -S "$sock_file" ] && sock_file=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
@@ -162,6 +168,11 @@ server {
 
     root ${PANEL_DIR}/cp-web/public;
     index index.php index.html;
+
+    location /.well-known/acme-challenge/ {
+        root ${PANEL_DIR}/cp-web/public;
+        try_files \$uri =404;
+    }
 
     location / {
         try_files \$uri \$uri/ /index.php?\$args;
@@ -216,19 +227,46 @@ EOF
     if [ -n "$panel_domain" ]; then
         local cert_file="/etc/ssl/certs/ssl-cert-snakeoil.pem"
         local key_file="/etc/ssl/private/ssl-cert-snakeoil.key"
+        local has_ssl=false
 
         if [ -f "/etc/letsencrypt/live/${panel_domain}/fullchain.pem" ]; then
             cert_file="/etc/letsencrypt/live/${panel_domain}/fullchain.pem"
             key_file="/etc/letsencrypt/live/${panel_domain}/privkey.pem"
+            has_ssl=true
         fi
 
-        cat <<EOF >> "$panel_conf"
+        if [ "$force_https" = "1" ] && [ "$has_ssl" = true ]; then
+            cat <<EOF >> "$panel_conf"
+
+# Redireccion forzada HTTP a HTTPS para ${panel_domain}
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${panel_domain};
+
+    location /.well-known/acme-challenge/ {
+        root ${PANEL_DIR}/cp-web/public;
+        try_files \$uri =404;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+EOF
+        else
+            cat <<EOF >> "$panel_conf"
 
 # Acceso directo al panel mediante ${panel_domain} en puerto 80 (HTTP)
 server {
     listen 80;
     listen [::]:80;
     server_name ${panel_domain};
+
+    location /.well-known/acme-challenge/ {
+        root ${PANEL_DIR}/cp-web/public;
+        try_files \$uri =404;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8083;
@@ -238,6 +276,10 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
+EOF
+        fi
+
+        cat <<EOF >> "$panel_conf"
 
 # Acceso directo al panel mediante ${panel_domain} en puerto 443 (HTTPS / SSL)
 server {
@@ -249,6 +291,11 @@ server {
     ssl_certificate_key ${key_file};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location /.well-known/acme-challenge/ {
+        root ${PANEL_DIR}/cp-web/public;
+        try_files \$uri =404;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8083;
@@ -274,6 +321,72 @@ EOF
         echo "{\"status\":\"error\",\"message\":\"Error de sintaxis en la configuracion de Nginx\"}"
         exit 1
     fi
+}
+
+server_issue_panel_ssl() {
+    local panel_domain="$1"
+    local email="$2"
+    local force_https="${3:-0}"
+
+    [ -z "$panel_domain" ] && exit_error "Dominio o subdominio del panel requerido"
+    panel_domain=$(echo "$panel_domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+
+    local doc_root="${PANEL_DIR}/cp-web/public"
+    if [ ! -d "$doc_root" ]; then
+        exit_error "El DocumentRoot del panel no existe: $doc_root"
+    fi
+
+    log_info "Iniciando expedicion de certificado Let's Encrypt para subdominio/dominio del panel: $panel_domain"
+
+    # Preparar directorio de desafio ACME
+    mkdir -p "${doc_root}/.well-known/acme-challenge"
+    chown -R www-data:www-data "${doc_root}/.well-known" 2>/dev/null || true
+    chmod -R 755 "${doc_root}/.well-known" 2>/dev/null || true
+
+    # Asegurar que el dominio este configurado en Nginx para recibir la validacion HTTP
+    server_set_panel_domain "$panel_domain" "0" >/dev/null 2>&1
+
+    # Opciones de correo
+    local email_opt="--register-unsafely-without-email"
+    if [ -n "$email" ]; then
+        email_opt="--email $email --no-eff-email"
+    fi
+
+    # Ejecutar Certbot con plugin webroot
+    local certbot_output
+    certbot_output=$(certbot certonly --webroot \
+        -w "$doc_root" \
+        -d "$panel_domain" \
+        --non-interactive \
+        --agree-tos \
+        $email_opt 2>&1)
+
+    if [ ! -f "/etc/letsencrypt/live/${panel_domain}/fullchain.pem" ]; then
+        log_error "Fallo al emitir certificado Let's Encrypt para $panel_domain: $certbot_output"
+        echo "{\"status\":\"error\",\"message\":\"No se pudo emitir el certificado Let's Encrypt. Verifica que el registro DNS apunte a la IP de este servidor.\",\"log\":\"$(json_escape "$certbot_output")\"}"
+        exit 1
+    fi
+
+    # Reconfigurar Nginx con el nuevo certificado y el estado de force_https
+    server_set_panel_domain "$panel_domain" "$force_https" >/dev/null 2>&1
+
+    log_info "Certificado Let's Encrypt para el panel expedido y activado correctamente en $panel_domain"
+    echo "{\"status\":\"success\",\"message\":\"Certificado Let's Encrypt instalado y activado exitosamente para $panel_domain\",\"domain\":\"$(json_escape "$panel_domain")\"}"
+}
+
+server_delete_panel_ssl() {
+    local panel_domain="$1"
+    [ -z "$panel_domain" ] && exit_error "Dominio o subdominio del panel requerido"
+    panel_domain=$(echo "$panel_domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+
+    log_info "Eliminando certificado SSL Let's Encrypt del panel: $panel_domain"
+
+    certbot delete --cert-name "$panel_domain" --non-interactive >/dev/null 2>&1 || true
+
+    # Reconfigurar Nginx sin SSL Let's Encrypt
+    server_set_panel_domain "$panel_domain" "0" >/dev/null 2>&1
+
+    echo "{\"status\":\"success\",\"message\":\"Certificado SSL del panel removido exitosamente\",\"domain\":\"$(json_escape "$panel_domain")\"}"
 }
 
 server_set_timezone() {
@@ -474,7 +587,13 @@ case "$ACTION" in
         server_set_hostname "$PARAM1"
         ;;
     set-panel-domain)
-        server_set_panel_domain "$PARAM1"
+        server_set_panel_domain "$PARAM1" "$PARAM2"
+        ;;
+    issue-panel-ssl)
+        server_issue_panel_ssl "$PARAM1" "$PARAM2" "$PARAM3"
+        ;;
+    delete-panel-ssl)
+        server_delete_panel_ssl "$PARAM1"
         ;;
     set-timezone)
         server_set_timezone "$PARAM1"
