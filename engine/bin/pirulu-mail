@@ -126,12 +126,31 @@ build_webmail_vhost() {
     local domain="$1"
     local force_https="${2:-0}"
     local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
-    local rc_root="/usr/share/roundcube"
-    if [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/index.php" ]; then
+    local webmail_host="webmail.${domain}"
+
+    # Sincronizar directorios de Roundcube
+    mkdir -p /var/lib/roundcube/temp /var/lib/roundcube/logs /var/log/roundcube
+    if [ -d /usr/share/roundcube ]; then
+        for item in /usr/share/roundcube/*; do
+            local base_name
+            base_name=$(basename "$item")
+            [ ! -e "/var/lib/roundcube/$base_name" ] && ln -sf "$item" "/var/lib/roundcube/$base_name" 2>/dev/null || true
+        done
+        [ -f /usr/share/roundcube/index.php ] && [ ! -f /var/lib/roundcube/index.php ] && ln -sf /usr/share/roundcube/index.php /var/lib/roundcube/index.php
+        [ -f /var/lib/roundcube/index.php ] && [ ! -f /usr/share/roundcube/index.php ] && ln -sf /var/lib/roundcube/index.php /usr/share/roundcube/index.php
+    fi
+
+    local rc_root="/var/lib/roundcube"
+    if [ -f "/var/lib/roundcube/index.php" ]; then
         rc_root="/var/lib/roundcube"
-    elif [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/public_html/index.php" ]; then
+    elif [ -f "/usr/share/roundcube/index.php" ]; then
+        rc_root="/usr/share/roundcube"
+    elif [ -f "/var/lib/roundcube/public_html/index.php" ]; then
         rc_root="/var/lib/roundcube/public_html"
     fi
+
+    chmod -R 755 /var/lib/roundcube /usr/share/roundcube 2>/dev/null || true
+    chown -R www-data:www-data /var/lib/roundcube /var/log/roundcube /etc/roundcube 2>/dev/null || true
 
     local sock_file="/run/php/pirulugcp-panel.sock"
     [ ! -S "$sock_file" ] && sock_file=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
