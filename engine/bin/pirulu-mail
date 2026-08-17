@@ -126,9 +126,12 @@ build_webmail_vhost() {
     local domain="$1"
     local force_https="${2:-0}"
     local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
-    local webmail_host="webmail.${domain}"
     local rc_root="/usr/share/roundcube"
-    [ ! -d "$rc_root" ] && rc_root="/var/lib/roundcube/public_html"
+    if [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/index.php" ]; then
+        rc_root="/var/lib/roundcube"
+    elif [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/public_html/index.php" ]; then
+        rc_root="/var/lib/roundcube/public_html"
+    fi
 
     local sock_file="/run/php/pirulugcp-panel.sock"
     [ ! -S "$sock_file" ] && sock_file=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
@@ -299,7 +302,11 @@ mail_webmail_ssl_issue() {
     domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
     local webmail_host="webmail.${domain}"
     local rc_root="/usr/share/roundcube"
-    [ ! -d "$rc_root" ] && rc_root="/var/lib/roundcube/public_html"
+    if [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/index.php" ]; then
+        rc_root="/var/lib/roundcube"
+    elif [ ! -f "${rc_root}/index.php" ] && [ -f "/var/lib/roundcube/public_html/index.php" ]; then
+        rc_root="/var/lib/roundcube/public_html"
+    fi
 
     log_info "Iniciando expedicion de certificado Let's Encrypt para: $webmail_host"
 

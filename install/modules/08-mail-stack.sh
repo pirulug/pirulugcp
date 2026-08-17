@@ -8,12 +8,17 @@ install_mail_stack() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         exim4-daemon-heavy \
         dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd \
-        roundcube roundcube-core roundcube-sqlite3 \
+        roundcube roundcube-core roundcube-sqlite3 php-sqlite3 \
         openssl ssl-cert
 
     # 2. Generar certificado SSL por defecto si no existe
-    if [ ! -f /etc/ssl/certs/ssl-cert-snakeoil.pem ]; then
-        make-ssl-cert generate-default-snakeoil --force-overwrite 2>/dev/null || true
+    if [ ! -f /etc/ssl/certs/ssl-cert-snakeoil.pem ] || [ ! -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
+        mkdir -p /etc/ssl/certs /etc/ssl/private
+        make-ssl-cert generate-default-snakeoil --force-overwrite 2>/dev/null || \
+        openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+            -keyout /etc/ssl/private/ssl-cert-snakeoil.key \
+            -out /etc/ssl/certs/ssl-cert-snakeoil.pem \
+            -subj "/CN=localhost" >/dev/null 2>&1 || true
     fi
 
     # 3. Crear directorios de configuracion para Exim4 y Dovecot
@@ -38,6 +43,9 @@ install_mail_stack() {
     mkdir -p /var/lib/roundcube
     if [ -d /usr/share/roundcube ]; then
         ln -sfn /usr/share/roundcube /var/lib/roundcube/public_html
+        mkdir -p /usr/share/roundcube/.well-known/acme-challenge
+        chown -R www-data:www-data /usr/share/roundcube/.well-known 2>/dev/null || true
+        chmod -R 755 /usr/share/roundcube/.well-known 2>/dev/null || true
     fi
 
     if [ -f "${PIRULU_INSTALL_DIR}/engine/templates/roundcube/config.inc.php.tpl" ]; then

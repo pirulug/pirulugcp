@@ -11,6 +11,11 @@ server {
 
     client_max_body_size 64M;
 
+    location /.well-known/acme-challenge/ {
+        root /usr/share/roundcube;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.php?$args;
     }
@@ -55,6 +60,11 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     client_max_body_size 64M;
+
+    location /.well-known/acme-challenge/ {
+        root /usr/share/roundcube;
+        try_files $uri =404;
+    }
 
     location / {
         try_files $uri $uri/ /index.php?$args;
