@@ -35,10 +35,9 @@ install_mail_stack() {
     fi
 
     # 6. Configurar Roundcube Webmail
-    mkdir -p /var/lib/roundcube/public_html
-    # Enlace a la instalacion de Roundcube de Debian
+    mkdir -p /var/lib/roundcube
     if [ -d /usr/share/roundcube ]; then
-        ln -sf /usr/share/roundcube/* /var/lib/roundcube/public_html/ 2>/dev/null || true
+        ln -sfn /usr/share/roundcube /var/lib/roundcube/public_html
     fi
 
     if [ -f "${PIRULU_INSTALL_DIR}/engine/templates/roundcube/config.inc.php.tpl" ]; then
@@ -47,7 +46,7 @@ install_mail_stack() {
         cp "${PIRULU_INSTALL_DIR}/engine/templates/roundcube/config.inc.php.tpl" /var/lib/roundcube/config/config.inc.php
     fi
 
-    chown -R www-data:www-data /var/lib/roundcube /var/log/roundcube 2>/dev/null || true
+    chown -R www-data:www-data /var/lib/roundcube /var/log/roundcube /etc/roundcube 2>/dev/null || true
 
     # 7. Reglas de Firewall para puertos de Correo
     if command -v ufw >/dev/null 2>&1; then

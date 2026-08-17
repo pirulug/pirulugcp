@@ -6,7 +6,7 @@ server {
     listen [::]:8083;
     server_name webmail.%DOMAIN%;
 
-    root /var/lib/roundcube/public_html;
+    root /usr/share/roundcube;
     index index.php index.html;
 
     client_max_body_size 64M;
@@ -46,7 +46,7 @@ server {
     listen [::]:443 ssl;
     server_name webmail.%DOMAIN%;
 
-    root /var/lib/roundcube/public_html;
+    root /usr/share/roundcube;
     index index.php index.html;
 
     ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;

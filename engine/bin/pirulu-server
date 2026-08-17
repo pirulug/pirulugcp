@@ -194,17 +194,17 @@ server {
     }
 
     location /webmail {
-        alias /var/lib/roundcube/public_html;
+        alias /usr/share/roundcube;
         index index.php;
 
         location ~ ^/webmail/(.+\.php)$ {
             include fastcgi_params;
             fastcgi_pass unix:${sock_file};
-            fastcgi_param SCRIPT_FILENAME /var/lib/roundcube/public_html/\$1;
+            fastcgi_param SCRIPT_FILENAME /usr/share/roundcube/\$1;
         }
 
         location ~* ^/webmail/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt|svg|woff|woff2))$ {
-            alias /var/lib/roundcube/public_html/\$1;
+            alias /usr/share/roundcube/\$1;
         }
     }
 

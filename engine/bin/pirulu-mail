@@ -101,6 +101,12 @@ mail_domain_add() {
     chmod 750 "/home/${user}/mail" "$mail_base_dir"
 
     # 4. Crear VirtualHost de Nginx para webmail.DOMAIN
+    mkdir -p /var/lib/roundcube
+    if [ -d /usr/share/roundcube ]; then
+        ln -sfn /usr/share/roundcube /var/lib/roundcube/public_html
+    fi
+    chown -R www-data:www-data /var/lib/roundcube /var/log/roundcube /etc/roundcube 2>/dev/null || true
+
     local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
     if [ -f "$WEBMAIL_TPL" ]; then
         sed "s/%DOMAIN%/${domain}/g" "$WEBMAIL_TPL" > "$webmail_conf"
