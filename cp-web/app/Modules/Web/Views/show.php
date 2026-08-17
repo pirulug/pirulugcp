@@ -106,6 +106,11 @@ $dbg = $debugData ?? [];
         <i class="bi bi-bug me-1"></i> Depuración
       </a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link <?= ($active === "backups") ? "active fw-bold" : "text-body" ?>" href="/web/domain/<?= (int)$d["id"] ?>?tab=backups">
+        <i class="bi bi-archive me-1"></i> Backups
+      </a>
+    </li>
   </ul>
 
   <!-- Ruta Fisica Derecha -->
@@ -1252,4 +1257,216 @@ $dbg = $debugData ?? [];
       </button>
     </form>
   </div>
+<?php endif; ?>
+
+<!-- ======================================================================= -->
+<!-- PESTANA 6: COPIAS DE SEGURIDAD (BACKUPS) Y RETENCION HISTORICA          -->
+<!-- ======================================================================= -->
+<?php if ($active === "backups"): ?>
+  <?php
+  $bkSet = $backupSettings ?? [];
+  $bkList = $domainBackups ?? [];
+  $isBkEnabled = !empty($bkSet["enabled"]);
+  $frequency = $bkSet["frequency"] ?? "daily";
+  $retention = (int)($bkSet["retention_count"] ?? 5);
+  $incFiles = !isset($bkSet["include_files"]) || !empty($bkSet["include_files"]);
+  $incDb = !isset($bkSet["include_db"]) || !empty($bkSet["include_db"]);
+  ?>
+
+  <div class="row g-3 mb-3">
+    <!-- Columna Izquierda: Configuracion de Backups Automaticos y Retencion -->
+    <div class="col-lg-5">
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0 d-flex align-items-center">
+            <i class="bi bi-gear-fill me-2 text-primary"></i> Configuración Automática
+          </h5>
+          <span class="badge <?= $isBkEnabled ? "bg-success-subtle text-success border border-success-subtle" : "bg-secondary-subtle text-secondary border border-secondary-subtle" ?> font-monospace">
+            <?= $isBkEnabled ? "Activo" : "Inactivo" ?>
+          </span>
+        </div>
+        <div class="card-body">
+          <form action="/web/domain/<?= (int)$d["id"] ?>/backup/settings" method="POST">
+            <!-- Switch Activar Backups Automaticos -->
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" role="switch" id="backup_enabled_switch" name="enabled" value="1" <?= $isBkEnabled ? "checked" : "" ?> onchange="toggleBackupConfigFields(this.checked)">
+              <label class="form-check-label fw-bold" for="backup_enabled_switch">
+                Activar copias de seguridad automáticas
+              </label>
+            </div>
+
+            <div id="backup_config_fields" class="<?= $isBkEnabled ? "" : "d-none" ?>">
+              <!-- Frecuencia -->
+              <div class="mb-3">
+                <label for="backup_frequency" class="form-label fw-bold">Frecuencia de Respaldo</label>
+                <select class="form-select font-monospace" id="backup_frequency" name="frequency">
+                  <option value="6hours" <?= ($frequency === "6hours") ? "selected" : "" ?>>Cada 6 horas</option>
+                  <option value="12hours" <?= ($frequency === "12hours") ? "selected" : "" ?>>Cada 12 horas</option>
+                  <option value="daily" <?= ($frequency === "daily") ? "selected" : "" ?>>Diario (Cada 24 horas)</option>
+                  <option value="weekly" <?= ($frequency === "weekly") ? "selected" : "" ?>>Semanal (Cada 7 días)</option>
+                  <option value="monthly" <?= ($frequency === "monthly") ? "selected" : "" ?>>Mensual (Cada 30 días)</option>
+                </select>
+              </div>
+
+              <!-- Retencion de Historial -->
+              <div class="mb-3">
+                <label for="backup_retention" class="form-label fw-bold">Historial de Copias a Guardar (Retención)</label>
+                <select class="form-select font-monospace" id="backup_retention" name="retention_count">
+                  <option value="3" <?= ($retention === 3) ? "selected" : "" ?>>Conservar las últimas 3 copias</option>
+                  <option value="5" <?= ($retention === 5) ? "selected" : "" ?>>Conservar las últimas 5 copias (Recomendado)</option>
+                  <option value="7" <?= ($retention === 7) ? "selected" : "" ?>>Conservar las últimas 7 copias</option>
+                  <option value="10" <?= ($retention === 10) ? "selected" : "" ?>>Conservar las últimas 10 copias</option>
+                  <option value="15" <?= ($retention === 15) ? "selected" : "" ?>>Conservar las últimas 15 copias</option>
+                  <option value="30" <?= ($retention === 30) ? "selected" : "" ?>>Conservar las últimas 30 copias</option>
+                </select>
+                <div class="form-text small text-muted">Las copias más antiguas se eliminarán automáticamente al superar este límite para ahorrar espacio en disco.</div>
+              </div>
+
+              <!-- Componentes a incluir -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">Componentes Incluidos</label>
+                <div class="form-check mb-1">
+                  <input class="form-check-input" type="checkbox" name="include_files" id="inc_files_check" value="1" <?= $incFiles ? "checked" : "" ?>>
+                  <label class="form-check-label small" for="inc_files_check">
+                    Archivos Web (<code>/public_html</code>)
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="include_db" id="inc_db_check" value="1" <?= $incDb ? "checked" : "" ?>>
+                  <label class="form-check-label small" for="inc_db_check">
+                    Bases de datos MariaDB vinculadas (dump SQL)
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-end pt-2">
+              <button type="submit" class="btn btn-primary px-4 text-uppercase fw-bold">
+                <i class="bi bi-floppy me-2"></i> Guardar Configuración
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Informacion de Proximo Respaldo -->
+      <?php if ($isBkEnabled && !empty($bkSet["next_backup_at"])): ?>
+        <div class="bg-body p-3 rounded border font-monospace small">
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-muted">Próximo respaldo:</span>
+            <strong class="text-body"><?= date("d/m/Y H:i", strtotime($bkSet["next_backup_at"])) ?></strong>
+          </div>
+          <?php if (!empty($bkSet["last_backup_at"])): ?>
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Último respaldo:</span>
+              <span class="text-body"><?= date("d/m/Y H:i", strtotime($bkSet["last_backup_at"])) ?></span>
+            </div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+
+    <!-- Columna Derecha: Generacion Manual e Historial de Copias -->
+    <div class="col-lg-7">
+      <!-- Accion Superior: Generar Backup Manual -->
+      <div class="bg-body p-3 rounded mb-3 d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-0 fw-bold">Copias de Seguridad Disponibles</h5>
+          <span class="text-muted small">Total: <strong><?= count($bkList) ?></strong> de un máximo de <strong><?= $retention ?></strong> copias permitidas</span>
+        </div>
+        <form action="/web/domain/<?= (int)$d["id"] ?>/backup/create" method="POST" class="m-0">
+          <button type="submit" class="btn btn-primary text-uppercase fw-bold text-nowrap">
+            <i class="bi bi-plus-circle me-1"></i> Crear Backup Ahora
+          </button>
+        </form>
+      </div>
+
+      <!-- Tabla de Historial de Backups -->
+      <div class="bg-body p-3 rounded mb-3">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle table-sm m-0 font-monospace">
+            <thead>
+              <tr class="text-muted small">
+                <th>Archivo</th>
+                <th>Tipo</th>
+                <th>Tamaño</th>
+                <th>Fecha</th>
+                <th class="text-end pe-3 text-nowrap">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (empty($bkList)): ?>
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-4">
+                    <i class="bi bi-archive fs-3 d-block mb-1 opacity-50"></i>
+                    No existen copias de seguridad registradas para este dominio aún.
+                  </td>
+                </tr>
+              <?php else: ?>
+                <?php foreach ($bkList as $bk): ?>
+                  <?php
+                  $bId = (int)$bk["id"];
+                  $bName = $bk["filename"];
+                  $bSize = (int)$bk["filesize_bytes"];
+                  $bSizeFmt = ($bSize > 1048576) ? round($bSize / 1048576, 2) . " MB" : (($bSize > 1024) ? round($bSize / 1024, 2) . " KB" : $bSize . " B");
+                  $bType = $bk["backup_type"] ?? "manual";
+                  $bDate = !empty($bk["created_at"]) ? date("d/m/Y H:i", strtotime($bk["created_at"])) : "-";
+                  ?>
+                  <tr>
+                    <td class="fw-bold text-body text-truncate" style="max-width: 200px;" title="<?= $bName ?>">
+                      <i class="bi bi-file-earmark-zip me-1 text-warning"></i>
+                      <?= $bName ?>
+                    </td>
+                    <td>
+                      <span class="badge <?= ($bType === "auto") ? "bg-info-subtle text-info border border-info-subtle" : "bg-body-tertiary text-body border" ?>">
+                        <?= ($bType === "auto") ? "Automático" : "Manual" ?>
+                      </span>
+                    </td>
+                    <td><?= $bSizeFmt ?></td>
+                    <td class="text-muted small"><?= $bDate ?></td>
+                    <td class="text-end pe-3 text-nowrap">
+                      <div class="d-flex justify-content-end gap-1">
+                        <!-- Descargar -->
+                        <a href="/web/domain/<?= (int)$d["id"] ?>/backup/<?= $bId ?>/download" 
+                           class="btn btn-sm btn-outline-primary text-uppercase fw-bold text-nowrap" 
+                           title="Descargar archivo .zip">
+                          <i class="bi bi-download me-1"></i> Descargar
+                        </a>
+
+                        <!-- Restaurar -->
+                        <form action="/web/domain/<?= (int)$d["id"] ?>/backup/<?= $bId ?>/restore" method="POST" class="d-inline m-0" onsubmit="return confirm('¿Estás seguro de restaurar esta copia de seguridad? Se sobreescribirán los archivos y bases de datos actuales del dominio.')">
+                          <button type="submit" class="btn btn-sm btn-outline-warning text-uppercase fw-bold text-nowrap" title="Restaurar este respaldo">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> Restaurar
+                          </button>
+                        </form>
+
+                        <!-- Eliminar -->
+                        <form action="/web/domain/<?= (int)$d["id"] ?>/backup/<?= $bId ?>/delete" method="POST" class="d-inline m-0" onsubmit="return confirm('¿Eliminar permanentemente este archivo de copia de seguridad?')">
+                          <button type="submit" class="btn btn-sm btn-outline-danger text-uppercase fw-bold text-nowrap" title="Eliminar respaldo">
+                            <i class="bi bi-trash me-1"></i> Eliminar
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function toggleBackupConfigFields(isChecked) {
+    const box = document.getElementById("backup_config_fields");
+    if (!box) return;
+    if (isChecked) {
+      box.classList.remove("d-none");
+    } else {
+      box.classList.add("d-none");
+    }
+  }
+  </script>
 <?php endif; ?>

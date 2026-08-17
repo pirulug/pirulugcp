@@ -10,7 +10,7 @@ check_system_requirements() {
     fi
 
     apt-get update -y
-    apt-get install -y lsb-release ca-certificates apt-transport-https curl git ufw openssl gnupg2 rsync
+    apt-get install -y lsb-release ca-certificates apt-transport-https curl git ufw openssl gnupg2 rsync zip unzip
 
     OS_ID="debian"
     OS_CODENAME="trixie"

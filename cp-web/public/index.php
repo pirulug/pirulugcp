@@ -148,6 +148,11 @@ $router->post("/web/update-php", [WebController::class, "updatePhp"]);
 $router->post("/web/update-docroot", [WebController::class, "updateDocRoot"]);
 $router->get("/web/enable-ssl/{id}", [WebController::class, "enableSsl"]);
 $router->get("/web/disable-ssl/{id}", [WebController::class, "disableSsl"]);
+$router->post("/web/domain/{id}/backup/settings", [WebController::class, "saveBackupSettings"]);
+$router->post("/web/domain/{id}/backup/create", [WebController::class, "createBackup"]);
+$router->get("/web/domain/{id}/backup/{backupId}/download", [WebController::class, "downloadBackup"]);
+$router->post("/web/domain/{id}/backup/{backupId}/restore", [WebController::class, "restoreBackup"]);
+$router->post("/web/domain/{id}/backup/{backupId}/delete", [WebController::class, "deleteBackup"]);
 $router->get("/web/delete/{id}", [WebController::class, "delete"]);
 
 // Rutas de Integracion Git (GitHub / GitLab / Bitbucket)

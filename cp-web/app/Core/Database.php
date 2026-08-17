@@ -134,6 +134,34 @@ class Database {
     }
 
     $db->exec("
+      CREATE TABLE IF NOT EXISTS domain_backup_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain_id INTEGER UNIQUE NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        frequency TEXT NOT NULL DEFAULT 'daily',
+        retention_count INTEGER NOT NULL DEFAULT 5,
+        include_files INTEGER NOT NULL DEFAULT 1,
+        include_db INTEGER NOT NULL DEFAULT 1,
+        last_backup_at DATETIME,
+        next_backup_at DATETIME,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS domain_backups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        filesize_bytes INTEGER NOT NULL DEFAULT 0,
+        backup_type TEXT NOT NULL DEFAULT 'manual',
+        status TEXT NOT NULL DEFAULT 'completed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
+      );
+    ");
+
+    $db->exec("
       CREATE TABLE IF NOT EXISTS server_settings (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         server_hostname TEXT NOT NULL DEFAULT 'localhost',

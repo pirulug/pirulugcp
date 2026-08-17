@@ -2,6 +2,7 @@
 
 namespace Pirulu\Modules\Web\Controllers;
 
+use PDO;
 use Pirulu\Core\Auth;
 use Pirulu\Core\Database;
 use Pirulu\Core\Engine;
@@ -574,24 +575,43 @@ class WebController {
       // Ignorar fallback
     }
 
+    // Cargar configuracion y lista de backups para este dominio
+    $stmtBkSettings = $db->prepare("SELECT * FROM domain_backup_settings WHERE domain_id = ? LIMIT 1");
+    $stmtBkSettings->execute([(int)$id]);
+    $backupSettings = $stmtBkSettings->fetch() ?: [
+      "enabled"         => 0,
+      "frequency"       => "daily",
+      "retention_count" => 5,
+      "include_files"   => 1,
+      "include_db"      => 1,
+      "last_backup_at"  => null,
+      "next_backup_at"  => null
+    ];
+
+    $stmtBackups = $db->prepare("SELECT * FROM domain_backups WHERE domain_id = ? ORDER BY created_at DESC");
+    $stmtBackups->execute([(int)$id]);
+    $domainBackups = $stmtBackups->fetchAll();
+
     View::render("Modules/Web/Views/show", [
-      "pageTitle"     => $domainName . " - Panel y Métricas de la Aplicación",
-      "domain"        => $domain,
-      "framework"     => $framework,
-      "frameworkLogo" => $frameworkLogo,
-      "hasArtisan"    => $hasArtisan,
-      "hasEnv"        => $hasEnv,
-      "activeTab"     => $activeTab,
-      "period"        => $period,
-      "metrics"       => $metrics,
-      "debugData"     => $debugData,
-      "sslInfo"       => $sslInfo,
-      "docRoot"       => $docRoot,
-      "webRoot"       => $webRoot,
-      "rawEnv"        => $rawEnv,
-      "accessLogs"    => $accessLogs,
-      "errorLogs"     => $errorLogs,
-      "phpVersions"   => $phpVersions
+      "pageTitle"      => $domainName . " - Panel y Métricas de la Aplicación",
+      "domain"         => $domain,
+      "framework"      => $framework,
+      "frameworkLogo"  => $frameworkLogo,
+      "hasArtisan"     => $hasArtisan,
+      "hasEnv"         => $hasEnv,
+      "activeTab"      => $activeTab,
+      "period"         => $period,
+      "metrics"        => $metrics,
+      "debugData"      => $debugData,
+      "sslInfo"        => $sslInfo,
+      "docRoot"        => $docRoot,
+      "webRoot"        => $webRoot,
+      "rawEnv"         => $rawEnv,
+      "accessLogs"     => $accessLogs,
+      "errorLogs"      => $errorLogs,
+      "phpVersions"    => $phpVersions,
+      "backupSettings" => $backupSettings,
+      "domainBackups"  => $domainBackups
     ]);
   }
 
@@ -913,6 +933,250 @@ class WebController {
     }
 
     header("Location: /web");
+    exit();
+  }
+
+  public function saveBackupSettings($id) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT * FROM domains WHERE id = ?");
+    $stmt->execute([(int)$id]);
+    $domain = $stmt->fetch();
+
+    if (!$domain) {
+      View::setFlash("danger", "Dominio no encontrado.");
+      header("Location: /web");
+      exit();
+    }
+
+    $enabled = !empty($_POST["enabled"]) ? 1 : 0;
+    $frequency = trim($_POST["frequency"] ?? "daily");
+    $retentionCount = max(1, (int)($_POST["retention_count"] ?? 5));
+    $includeFiles = !empty($_POST["include_files"]) ? 1 : 0;
+    $includeDb = !empty($_POST["include_db"]) ? 1 : 0;
+
+    $interval = "+1 day";
+    if ($frequency === "hourly") {
+      $interval = "+1 hour";
+    } elseif ($frequency === "6hours") {
+      $interval = "+6 hours";
+    } elseif ($frequency === "12hours") {
+      $interval = "+12 hours";
+    } elseif ($frequency === "weekly") {
+      $interval = "+7 days";
+    } elseif ($frequency === "monthly") {
+      $interval = "+30 days";
+    }
+    $nextBackup = date("Y-m-d H:i:s", strtotime($interval));
+
+    $stmtSettings = $db->prepare("
+      INSERT INTO domain_backup_settings (domain_id, enabled, frequency, retention_count, include_files, include_db, next_backup_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(domain_id) DO UPDATE SET
+        enabled = excluded.enabled,
+        frequency = excluded.frequency,
+        retention_count = excluded.retention_count,
+        include_files = excluded.include_files,
+        include_db = excluded.include_db,
+        next_backup_at = excluded.next_backup_at,
+        updated_at = CURRENT_TIMESTAMP
+    ");
+    $stmtSettings->execute([(int)$id, $enabled, $frequency, $retentionCount, $includeFiles, $includeDb, $nextBackup]);
+
+    View::setFlash("success", "Configuración de copias de seguridad actualizada correctamente.");
+    header("Location: /web/domain/" . (int)$id . "?tab=backups");
+    exit();
+  }
+
+  public function createBackup($id) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT d.*, u.username FROM domains d LEFT JOIN users u ON d.user_id = u.id WHERE d.id = ?");
+    $stmt->execute([(int)$id]);
+    $domain = $stmt->fetch();
+
+    if (!$domain) {
+      View::setFlash("danger", "Dominio no encontrado.");
+      header("Location: /web");
+      exit();
+    }
+
+    $username = $domain["username"] ?? "admin";
+    $domainName = $domain["domain"];
+
+    $stmtSettings = $db->prepare("SELECT * FROM domain_backup_settings WHERE domain_id = ? LIMIT 1");
+    $stmtSettings->execute([(int)$id]);
+    $settings = $stmtSettings->fetch();
+
+    $incFiles = ($settings && isset($settings["include_files"])) ? (int)$settings["include_files"] : 1;
+    $incDb = ($settings && isset($settings["include_db"])) ? (int)$settings["include_db"] : 1;
+    $retention = ($settings && !empty($settings["retention_count"])) ? (int)$settings["retention_count"] : 5;
+
+    // Obtener bases de datos de este usuario en SQLite
+    $linkedDbs = [];
+    $stmtUserDbs = $db->prepare("SELECT db_name FROM databases WHERE user_id = ?");
+    $stmtUserDbs->execute([(int)($domain["user_id"] ?? 1)]);
+    $userDbs = $stmtUserDbs->fetchAll(PDO::FETCH_COLUMN);
+    if (!empty($userDbs)) {
+      $linkedDbs = $userDbs;
+    }
+    $dbsArg = implode(",", $linkedDbs);
+
+    $res = Engine::execute("pirulu-backup", [
+      "create",
+      $username,
+      $domainName,
+      "manual",
+      (string)$incFiles,
+      (string)$incDb,
+      (string)$retention,
+      $dbsArg
+    ]);
+
+    if (!empty($res["status"]) && $res["status"] === "success") {
+      $filename = $res["filename"] ?? ($domainName . "_" . date("Ymd_His") . ".zip");
+      $filepath = $res["filepath"] ?? ("/home/" . $username . "/backup/" . $domainName . "/" . $filename);
+      $filesize = (int)($res["filesize"] ?? 0);
+
+      $insStmt = $db->prepare("INSERT INTO domain_backups (domain_id, filename, filepath, filesize_bytes, backup_type, status, created_at) VALUES (?, ?, ?, ?, 'manual', 'completed', CURRENT_TIMESTAMP)");
+      $insStmt->execute([(int)$id, $filename, $filepath, $filesize]);
+
+      // Sincronizar registros en SQLite si se supero la retencion
+      $stmtSync = $db->prepare("SELECT id, filename FROM domain_backups WHERE domain_id = ? ORDER BY created_at DESC");
+      $stmtSync->execute([(int)$id]);
+      $allRows = $stmtSync->fetchAll();
+      if (count($allRows) > $retention) {
+        $toDelete = array_slice($allRows, $retention);
+        foreach ($toDelete as $oldRow) {
+          $delStmt = $db->prepare("DELETE FROM domain_backups WHERE id = ?");
+          $delStmt->execute([(int)$oldRow["id"]]);
+        }
+      }
+
+      View::setFlash("success", "Copia de seguridad ZIP generada exitosamente (" . $filename . ").");
+    } else {
+      View::setFlash("danger", "Error al generar la copia de seguridad: " . ($res["raw_output"] ?? "Fallo en el empaquetado."));
+    }
+
+    header("Location: /web/domain/" . (int)$id . "?tab=backups");
+    exit();
+  }
+
+  public function downloadBackup($id, $backupId) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT b.*, d.domain, u.username FROM domain_backups b JOIN domains d ON b.domain_id = d.id LEFT JOIN users u ON d.user_id = u.id WHERE b.id = ? AND b.domain_id = ? LIMIT 1");
+    $stmt->execute([(int)$backupId, (int)$id]);
+    $backup = $stmt->fetch();
+
+    if (!$backup || empty($backup["filepath"])) {
+      View::setFlash("danger", "El archivo de copia de seguridad no existe en el almacenamiento.");
+      header("Location: /web/domain/" . (int)$id . "?tab=backups");
+      exit();
+    }
+
+    $filepath = $backup["filepath"];
+    $filename = $backup["filename"];
+
+    // Si el archivo no tiene permisos de lectura para el proceso web, intentar corregir
+    if (!file_exists($filepath) || !is_readable($filepath)) {
+      @chmod($filepath, 0644);
+    }
+
+    if (!file_exists($filepath)) {
+      View::setFlash("danger", "No se encontró el archivo de copia de seguridad en el disco.");
+      header("Location: /web/domain/" . (int)$id . "?tab=backups");
+      exit();
+    }
+
+    $fileSize = filesize($filepath);
+
+    // Limpiar cualquier buffer de salida previo para evitar corrupcion o desconexion de descarga
+    while (ob_get_level() > 0) {
+      ob_end_clean();
+    }
+
+    // Cabeceras HTTP estandar para descarga forzada de archivos comprimidos ZIP
+    header("Content-Description: File Transfer");
+    header("Content-Type: application/zip");
+    header("Content-Disposition: attachment; filename=\"" . basename($filename) . "\"");
+    header("Content-Transfer-Encoding: binary");
+    header("Expires: 0");
+    header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
+    header("Pragma: public");
+    if ($fileSize !== false && $fileSize > 0) {
+      header("Content-Length: " . $fileSize);
+    }
+
+    // Transmision en bloques (chunks) para evitar limites de memoria y desconexiones
+    $handle = fopen($filepath, "rb");
+    if ($handle !== false) {
+      while (!feof($handle)) {
+        echo fread($handle, 65536); // Bloques de 64 KB
+        flush();
+      }
+      fclose($handle);
+    } else {
+      readfile($filepath);
+    }
+    exit();
+  }
+
+  public function restoreBackup($id, $backupId) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT b.*, d.domain, u.username FROM domain_backups b JOIN domains d ON b.domain_id = d.id LEFT JOIN users u ON d.user_id = u.id WHERE b.id = ? AND b.domain_id = ? LIMIT 1");
+    $stmt->execute([(int)$backupId, (int)$id]);
+    $backup = $stmt->fetch();
+
+    if (!$backup) {
+      View::setFlash("danger", "Registro de copia de seguridad no encontrado.");
+      header("Location: /web/domain/" . (int)$id . "?tab=backups");
+      exit();
+    }
+
+    $username = $backup["username"] ?? "admin";
+    $domainName = $backup["domain"];
+    $filename = $backup["filename"];
+
+    $res = Engine::execute("pirulu-backup", ["restore", $username, $domainName, $filename]);
+
+    if (!empty($res["status"]) && $res["status"] === "success") {
+      View::setFlash("success", "Copia de seguridad restaurada exitosamente para " . $domainName . ".");
+    } else {
+      View::setFlash("danger", "Error al restaurar la copia de seguridad: " . ($res["raw_output"] ?? "Error en restauración."));
+    }
+
+    header("Location: /web/domain/" . (int)$id . "?tab=backups");
+    exit();
+  }
+
+  public function deleteBackup($id, $backupId) {
+    Auth::requireAuth();
+    $db = Database::getConnection();
+
+    $stmt = $db->prepare("SELECT b.*, d.domain, u.username FROM domain_backups b JOIN domains d ON b.domain_id = d.id LEFT JOIN users u ON d.user_id = u.id WHERE b.id = ? AND b.domain_id = ? LIMIT 1");
+    $stmt->execute([(int)$backupId, (int)$id]);
+    $backup = $stmt->fetch();
+
+    if ($backup) {
+      $username = $backup["username"] ?? "admin";
+      $domainName = $backup["domain"];
+      $filename = $backup["filename"];
+
+      Engine::execute("pirulu-backup", ["delete", $username, $domainName, $filename]);
+
+      $delStmt = $db->prepare("DELETE FROM domain_backups WHERE id = ?");
+      $delStmt->execute([(int)$backupId]);
+
+      View::setFlash("success", "Copia de seguridad eliminada.");
+    }
+
+    header("Location: /web/domain/" . (int)$id . "?tab=backups");
     exit();
   }
 }

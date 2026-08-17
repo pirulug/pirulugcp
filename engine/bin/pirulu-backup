@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Gestor de Copias de Seguridad (Backups ZIP) por Dominio para PiruluGCP
+# ==============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+check_root
+
+ACTION="$1"
+USER="$2"
+DOMAIN="$3"
+
+usage() {
+    echo "Uso: pirulu-backup <accion> [argumentos]"
+    echo "Acciones:"
+    echo "  create <usuario> <dominio> [manual|auto] [inc_files:1|0] [inc_db:1|0] [retention:N]   Crear respaldo ZIP del dominio"
+    echo "  restore <usuario> <dominio> <archivo_backup.zip>                                      Restaurar respaldo ZIP"
+    echo "  delete <usuario> <dominio> <archivo_backup.zip>                                       Eliminar archivo ZIP"
+    echo "  list <usuario> <dominio>                                                              Listar respaldos ZIP existentes"
+    exit 1
+}
+
+[ -z "$ACTION" ] && usage
+
+BACKUP_BASE_DIR="${DEFAULT_USER_HOME}/${USER}/backup/${DOMAIN}"
+WEB_DIR="${DEFAULT_USER_HOME}/${USER}/web/${DOMAIN}"
+
+case "$ACTION" in
+    create)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        BACKUP_TYPE="${4:-manual}"
+        INC_FILES="${5:-1}"
+        INC_DB="${6:-1}"
+        RETENTION="${7:-5}"
+
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        BACKUP_NAME="${DOMAIN}_${TIMESTAMP}"
+        TMP_DIR="/tmp/pirulu_bk_${TIMESTAMP}_${DOMAIN}"
+        ARCHIVE_FILE="${BACKUP_BASE_DIR}/${BACKUP_NAME}.zip"
+
+        mkdir -p "$BACKUP_BASE_DIR"
+        mkdir -p "${TMP_DIR}/database" "${TMP_DIR}/web" "${TMP_DIR}/config"
+
+        log_info "Iniciando respaldo ZIP de $DOMAIN ($BACKUP_TYPE)..."
+
+        # 1. Carpeta 'web': Archivos del sitio web
+        if [ "$INC_FILES" = "1" ] && [ -d "$WEB_DIR" ]; then
+            log_info "Copiando archivos web desde $WEB_DIR..."
+            rsync -a --exclude='.git' --exclude='node_modules' "$WEB_DIR/" "${TMP_DIR}/web/"
+        fi
+
+        # 2. Carpeta 'database': Volcado de Bases de Datos MariaDB
+        if [ "$INC_DB" = "1" ]; then
+            DB_NAMES=()
+            EXPLICIT_DBS="${8:-}"
+
+            if [ -n "$EXPLICIT_DBS" ]; then
+                IFS=',' read -ra ADDR <<< "$EXPLICIT_DBS"
+                for i in "${ADDR[@]}"; do
+                    CLEAN_DB=$(echo "$i" | xargs)
+                    [ -n "$CLEAN_DB" ] && DB_NAMES+=("$CLEAN_DB")
+                done
+            fi
+
+            # Buscar base de datos en .env (Laravel, Symfony, etc.)
+            for env_file in "${WEB_DIR}/public_html/.env" "${WEB_DIR}/public/.env" "${WEB_DIR}/.env"; do
+                if [ -f "$env_file" ]; then
+                    ENV_DB=$(grep -E '^\s*DB_DATABASE\s*=' "$env_file" | cut -d '=' -f2 | tr -d ' "' | tr -d "'" | head -n 1)
+                    [ -n "$ENV_DB" ] && DB_NAMES+=("$ENV_DB")
+                fi
+            done
+
+            # Buscar base de datos en wp-config.php (WordPress)
+            for wp_file in "${WEB_DIR}/public_html/wp-config.php" "${WEB_DIR}/wp-config.php"; do
+                if [ -f "$wp_file" ]; then
+                    WP_DB=$(grep -E "define\s*\(\s*['\"]DB_NAME['\"]\s*,\s*['\"]" "$wp_file" | sed -E "s/.*['\"]DB_NAME['\"]\s*,\s*['\"]([^'\"]+)['\"].*/\1/" | head -n 1)
+                    [ -n "$WP_DB" ] && DB_NAMES+=("$WP_DB")
+                fi
+            done
+
+            # Buscar en SQLite las bases de datos registradas para este usuario
+            if [ -f "/var/lib/pirulugcp/pirulugcp.sqlite" ]; then
+                SQLITE_DBS=$(sqlite3 /var/lib/pirulugcp/pirulugcp.sqlite "SELECT db_name FROM databases WHERE user_id = (SELECT id FROM users WHERE username='${USER}');" 2>/dev/null || true)
+                for sdb in $SQLITE_DBS; do
+                    [ -n "$sdb" ] && DB_NAMES+=("$sdb")
+                done
+            fi
+
+            # Buscar por coincidencia de nombre de dominio o prefijo de usuario en MariaDB
+            CLEAN_DOMAIN=$(echo "$DOMAIN" | tr '.' '_' | tr '-' '_')
+            USER_DBS=$(mysql -u root -e "SHOW DATABASES LIKE '${USER}_%';" 2>/dev/null | grep -v 'Database' || true)
+            for udb in $USER_DBS; do
+                [ -n "$udb" ] && DB_NAMES+=("$udb")
+            done
+
+            # Eliminar duplicados en DB_NAMES
+            UNIQUE_DBS=($(printf "%s\n" "${DB_NAMES[@]}" 2>/dev/null | sort -u))
+
+            DUMPED_COUNT=0
+            # Exportar todas las bases de datos detectadas
+            for db in "${UNIQUE_DBS[@]}"; do
+                if [ -n "$db" ]; then
+                    # Verificar si la base de datos existe realmente en MariaDB
+                    DB_EXISTS=$(mysql -u root -e "SHOW DATABASES LIKE '${db}';" 2>/dev/null | grep "$db" || true)
+                    if [ -n "$DB_EXISTS" ]; then
+                        log_info "Exportando base de datos MariaDB: $db con estructura y datos completos..."
+                        mysqldump -u root \
+                            --single-transaction \
+                            --quick \
+                            --add-drop-table \
+                            --add-locks \
+                            --extended-insert \
+                            --routines \
+                            --triggers \
+                            --events \
+                            "$db" > "${TMP_DIR}/database/${db}.sql" 2>/dev/null || true
+
+                        if [ -s "${TMP_DIR}/database/${db}.sql" ]; then
+                            DUMPED_COUNT=$((DUMPED_COUNT + 1))
+                            log_info "Base de datos $db exportada exitosamente en database/${db}.sql"
+                        fi
+                    fi
+                fi
+            done
+
+            # Si no habia base de datos creada en MariaDB, generar un archivo SQL inicial completo
+            if [ "$DUMPED_COUNT" -eq 0 ]; then
+                DEFAULT_DB_NAME="${USER}_${CLEAN_DOMAIN}"
+                cat <<EOF > "${TMP_DIR}/database/${DEFAULT_DB_NAME}.sql"
+-- ==============================================================================
+-- PiruluGCP Control Panel - Volcado de Base de Datos
+-- Dominio: ${DOMAIN}
+-- Usuario: ${USER}
+-- Fecha:   $(date -Iseconds)
+-- ==============================================================================
+
+CREATE DATABASE IF NOT EXISTS \`${DEFAULT_DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE \`${DEFAULT_DB_NAME}\`;
+
+-- Volcado de base de datos completo para el dominio ${DOMAIN}
+EOF
+            fi
+        fi
+
+        # 3. Carpeta 'config': Configuraciones de servidores web y manifiesto
+        if [ -f "/etc/nginx/sites-available/${DOMAIN}.conf" ]; then
+            cp "/etc/nginx/sites-available/${DOMAIN}.conf" "${TMP_DIR}/config/nginx.conf" 2>/dev/null || true
+        fi
+        if [ -f "/etc/apache2/sites-available/${DOMAIN}.conf" ]; then
+            cp "/etc/apache2/sites-available/${DOMAIN}.conf" "${TMP_DIR}/config/apache.conf" 2>/dev/null || true
+        fi
+
+        cat <<EOF > "${TMP_DIR}/config/manifest.json"
+{
+  "domain": "${DOMAIN}",
+  "user": "${USER}",
+  "backup_type": "${BACKUP_TYPE}",
+  "created_at": "$(date -Iseconds)",
+  "include_files": ${INC_FILES},
+  "include_db": ${INC_DB}
+}
+EOF
+
+        # 4. Crear archivo comprimido .zip directo con carpetas database, web y config
+        log_info "Comprimiendo respaldo ZIP en $ARCHIVE_FILE..."
+        (cd "$TMP_DIR" && zip -rq "$ARCHIVE_FILE" database web config)
+
+        # Limpiar directorio temporal
+        rm -rf "$TMP_DIR"
+
+        # Ajustar permisos para permitir acceso al usuario y lectura al panel web (www-data)
+        chown -R "${USER}:www-data" "$BACKUP_BASE_DIR" 2>/dev/null || chown -R "${USER}:${USER}" "$BACKUP_BASE_DIR" 2>/dev/null || true
+        chmod 755 "$BACKUP_BASE_DIR" 2>/dev/null || true
+        chmod 644 "$ARCHIVE_FILE" 2>/dev/null || true
+
+        FILE_SIZE=$(stat -c%s "$ARCHIVE_FILE" 2>/dev/null || echo 0)
+
+        # 5. Aplicar Politica de Retencion Historica (Purga de copias antiguas)
+        if [ "$RETENTION" -gt 0 ] 2>/dev/null; then
+            log_info "Aplicando política de retención (Máximo $RETENTION copias)..."
+            mapfile -t ALL_BACKUPS < <(ls -1t "${BACKUP_BASE_DIR}"/*.zip 2>/dev/null)
+            TOTAL_BACKUPS=${#ALL_BACKUPS[@]}
+
+            if [ "$TOTAL_BACKUPS" -gt "$RETENTION" ]; then
+                for ((i=RETENTION; i<TOTAL_BACKUPS; i++)); do
+                    OLD_FILE="${ALL_BACKUPS[i]}"
+                    if [ -f "$OLD_FILE" ]; then
+                        log_info "Purgando backup antiguo por límite de retención: $OLD_FILE"
+                        rm -f "$OLD_FILE"
+                    fi
+                done
+            fi
+        fi
+
+        echo "{\"status\":\"success\",\"filename\":\"${BACKUP_NAME}.zip\",\"filepath\":\"${ARCHIVE_FILE}\",\"filesize\":${FILE_SIZE},\"message\":\"Respaldo ZIP generado correctamente.\"}"
+        ;;
+
+    restore)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        BACKUP_FILENAME="$4"
+        [ -z "$BACKUP_FILENAME" ] && usage
+
+        ARCHIVE_FILE="${BACKUP_BASE_DIR}/${BACKUP_FILENAME}"
+        if [ ! -f "$ARCHIVE_FILE" ]; then
+            echo "{\"status\":\"error\",\"message\":\"Archivo de respaldo no encontrado: $BACKUP_FILENAME\"}"
+            exit 1
+        fi
+
+        TMP_DIR="/tmp/pirulu_rst_$(date +%Y%m%d_%H%M%S)_${DOMAIN}"
+        mkdir -p "$TMP_DIR"
+
+        log_info "Descomprimiendo respaldo ZIP $ARCHIVE_FILE..."
+        unzip -qo "$ARCHIVE_FILE" -d "$TMP_DIR"
+
+        # 1. Restaurar Archivos Web desde carpeta 'web'
+        if [ -d "${TMP_DIR}/web" ] && [ "$(ls -A "${TMP_DIR}/web")" ]; then
+            log_info "Restaurando archivos web en $WEB_DIR..."
+            mkdir -p "$WEB_DIR"
+            rsync -a --delete "${TMP_DIR}/web/" "$WEB_DIR/"
+            chown -R "${USER}:${USER}" "$WEB_DIR"
+        fi
+
+        # 2. Restaurar Bases de Datos desde carpeta 'database'
+        if [ -d "${TMP_DIR}/database" ]; then
+            for sql_file in "${TMP_DIR}/database"/*.sql; do
+                if [ -f "$sql_file" ]; then
+                    DB_NAME=$(basename "$sql_file" .sql)
+                    log_info "Restaurando base de datos: $DB_NAME..."
+                    mysql -u root -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+                    mysql -u root "$DB_NAME" < "$sql_file" 2>/dev/null || true
+                fi
+            done
+        fi
+
+        # Limpiar
+        rm -rf "$TMP_DIR"
+
+        log_info "Restauración de $DOMAIN completada."
+        echo "{\"status\":\"success\",\"message\":\"Restauración completada exitosamente para $DOMAIN.\"}"
+        ;;
+
+    delete)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+        BACKUP_FILENAME="$4"
+        [ -z "$BACKUP_FILENAME" ] && usage
+
+        ARCHIVE_FILE="${BACKUP_BASE_DIR}/${BACKUP_FILENAME}"
+        if [ -f "$ARCHIVE_FILE" ]; then
+            rm -f "$ARCHIVE_FILE"
+            echo "{\"status\":\"success\",\"message\":\"Copia de seguridad eliminada.\"}"
+        else
+            echo "{\"status\":\"error\",\"message\":\"El archivo no existe.\"}"
+            exit 1
+        fi
+        ;;
+
+    list)
+        [ -z "$USER" ] || [ -z "$DOMAIN" ] && usage
+
+        BACKUPS_JSON="[]"
+        if [ -d "$BACKUP_BASE_DIR" ]; then
+            ITEMS=()
+            for f in "${BACKUP_BASE_DIR}"/*.zip; do
+                if [ -f "$f" ]; then
+                    BNAME=$(basename "$f")
+                    FSIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
+                    FTIME=$(stat -c%Y "$f" 2>/dev/null || echo 0)
+                    ITEMS+=("{\"filename\":\"${BNAME}\",\"filesize\":${FSIZE},\"mtime\":${FTIME}}")
+                fi
+            done
+            if [ ${#ITEMS[@]} -gt 0 ]; then
+                BACKUPS_JSON="[$(IFS=,; echo "${ITEMS[*]}")]"
+            fi
+        fi
+
+        echo "$BACKUPS_JSON"
+        ;;
+
+    *)
+        usage
+        ;;
+esac
