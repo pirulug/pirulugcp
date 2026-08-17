@@ -265,6 +265,8 @@ class Database {
         dkim_selector TEXT NOT NULL DEFAULT 'default',
         dkim_record TEXT,
         spf_record TEXT,
+        ssl_enabled INTEGER NOT NULL DEFAULT 0,
+        ssl_force_https INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (domain_id) REFERENCES domains (id) ON DELETE CASCADE
@@ -320,6 +322,19 @@ class Database {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
     ");
+
+    // Comprobar si faltan columnas de SSL en mail_domains
+    try {
+      $db->exec("ALTER TABLE mail_domains ADD COLUMN ssl_enabled INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
+
+    try {
+      $db->exec("ALTER TABLE mail_domains ADD COLUMN ssl_force_https INTEGER NOT NULL DEFAULT 0");
+    } catch (PDOException $e) {
+      // Columna ya existe
+    }
 
     // Comprobar si falta la columna db_password_enc en instalaciones existentes
     try {

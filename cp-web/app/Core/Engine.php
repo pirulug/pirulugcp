@@ -375,6 +375,49 @@ class Engine {
       ];
     }
 
+    if ($binary === "pirulu-mail") {
+      if ($action === "status") {
+        return [
+          "status"  => "success",
+          "exim4"   => "active",
+          "dovecot" => "active"
+        ];
+      }
+      if ($action === "webmail-ssl-issue") {
+        $domain = $args[1] ?? "example.com";
+        return [
+          "status"       => "success",
+          "message"      => "Certificado Let's Encrypt instalado correctamente para webmail." . $domain,
+          "domain"       => $domain,
+          "webmail_host" => "webmail." . $domain
+        ];
+      }
+      if ($action === "webmail-ssl-delete") {
+        $domain = $args[1] ?? "example.com";
+        return [
+          "status"  => "success",
+          "message" => "Certificado SSL de Webmail removido exitosamente",
+          "domain"  => $domain
+        ];
+      }
+      if ($action === "dkim-get") {
+        $domain = $args[1] ?? "example.com";
+        return [
+          "status"       => "success",
+          "domain"       => $domain,
+          "selector"     => "default",
+          "dkim_record"  => "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0mockKey",
+          "spf_record"   => "v=spf1 a mx ip4:192.168.1.100 ~all",
+          "dmarc_record" => "v=DMARC1; p=none; sp=none; aspf=r;",
+          "server_ip"    => "192.168.1.100"
+        ];
+      }
+      return [
+        "status"  => "success",
+        "message" => "Operacion de correo ejecutada en modo simulacion"
+      ];
+    }
+
     if ($binary === "pirulu-cron") {
       if ($action === "status") {
         return [

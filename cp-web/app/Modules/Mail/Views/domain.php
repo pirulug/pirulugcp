@@ -493,36 +493,144 @@ function copyAllDnsRecords() {
 
 <?php elseif ($activeTab === "webmail"): ?>
 <!-- ======================================================================= -->
-<!-- SECCION: ACCESO A WEBMAIL Y CONFIGURACION DE CLIENTES -->
+<!-- SECCION: ACCESO A WEBMAIL Y CERTIFICADO SSL (LET'S ENCRYPT) -->
 <!-- ======================================================================= -->
 <div class="row g-3">
-  <div class="col-md-6">
-    <div class="bg-body p-3 rounded h-100">
-      <h6 class="fw-bold mb-3">
-        <i class="bi bi-box-arrow-up-right me-1"></i> Acceso Webmail del Dominio
-      </h6>
+  <div class="col-lg-6">
+    <div class="bg-body p-3 rounded mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold mb-0">
+          <i class="bi bi-box-arrow-up-right me-1"></i> Acceso Webmail del Dominio
+        </h6>
+        <?php $hasWebmailSsl = (!empty($webmailSslInfo["ssl_active"]) || (!empty($domain["ssl_enabled"]) && (int)$domain["ssl_enabled"] === 1)); ?>
+        <?php if ($hasWebmailSsl): ?>
+          <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace">
+            <i class="bi bi-shield-check me-1"></i> SSL ACTIVO
+          </span>
+        <?php else: ?>
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle font-monospace">
+            <i class="bi bi-shield-exclamation me-1"></i> SIN SSL
+          </span>
+        <?php endif; ?>
+      </div>
 
       <p class="small text-muted mb-3">
-        Cada dominio cuenta con su propia direccion webmail aislada. Puedes ingresar desde cualquier navegador web:
+        Cada dominio cuenta con su propia dirección webmail aislada. Puedes ingresar de manera directa:
       </p>
 
       <div class="p-3 bg-body-tertiary rounded border text-center mb-3">
-        <a href="http://webmail.<?= $domain["domain_name"] ?>" target="_blank" class="h5 text-primary text-decoration-none font-monospace d-block my-2">
-          <i class="bi bi-window-fullscreen me-2"></i> http://webmail.<?= $domain["domain_name"] ?>
+        <a href="<?= $hasWebmailSsl ? 'https' : 'http' ?>://webmail.<?= $domain["domain_name"] ?>" target="_blank" class="h5 text-primary text-decoration-none font-monospace d-block my-2">
+          <i class="bi <?= $hasWebmailSsl ? 'bi-shield-lock-fill text-success' : 'bi-window-fullscreen' ?> me-2"></i> <?= $hasWebmailSsl ? 'https' : 'http' ?>://webmail.<?= $domain["domain_name"] ?>
         </a>
       </div>
 
       <div class="alert alert-info py-2 px-3 small mb-0">
         <i class="bi bi-info-circle me-1"></i>
-        <strong>Inicio de Sesion:</strong> En el formulario de Roundcube, ingresa tu direccion de correo completa (ej. <code>info@<?= $domain["domain_name"] ?></code>) y tu contraseña asignada.
+        <strong>Inicio de Sesión:</strong> En el formulario de Roundcube, ingresa tu dirección de correo completa (ej. <code>info@<?= $domain["domain_name"] ?></code>) y la contraseña de la cuenta.
       </div>
+    </div>
+
+    <!-- TARJETA: CERTIFICADO SSL LET'S ENCRYPT PARA WEBMAIL -->
+    <div class="bg-body p-3 rounded">
+      <h6 class="fw-bold mb-3">
+        <i class="bi bi-shield-lock me-1"></i> Certificado SSL (Let's Encrypt)
+      </h6>
+
+      <?php if ($hasWebmailSsl): ?>
+        <div class="table-responsive mb-3">
+          <table class="table table-sm table-borderless align-middle mb-0 small">
+            <tbody>
+              <tr>
+                <td class="text-muted" style="width: 140px;">Subdominio:</td>
+                <td><code class="fw-bold">webmail.<?= $domain["domain_name"] ?></code></td>
+              </tr>
+              <?php if (!empty($webmailSslInfo["issuer"])): ?>
+                <tr>
+                  <td class="text-muted">Emisor:</td>
+                  <td><span class="badge bg-secondary font-monospace"><?= $webmailSslInfo["issuer"] ?></span></td>
+                </tr>
+              <?php endif; ?>
+              <?php if (!empty($webmailSslInfo["valid_to"])): ?>
+                <tr>
+                  <td class="text-muted">Vigencia hasta:</td>
+                  <td><?= $webmailSslInfo["valid_to"] ?></td>
+                </tr>
+              <?php endif; ?>
+              <?php if (isset($webmailSslInfo["days_left"])): ?>
+                <tr>
+                  <td class="text-muted">Días restantes:</td>
+                  <td>
+                    <?php $days = (int)$webmailSslInfo["days_left"]; ?>
+                    <span class="badge <?= $days > 30 ? 'bg-success-subtle text-success border border-success-subtle' : ($days > 7 ? 'bg-warning-subtle text-warning border border-warning-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle') ?> font-monospace">
+                      <?= $days ?> días
+                    </span>
+                  </td>
+                </tr>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="border-top pt-3 mb-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="fw-bold small">Forzar Redirección HTTPS</div>
+              <div class="text-muted small">Redirige automáticamente las visitas de HTTP (puerto 80) a HTTPS (puerto 443).</div>
+            </div>
+            <form action="/mail/webmail/ssl/force-https/<?= $domain["id"] ?>" method="POST" class="m-0">
+              <button type="submit" class="btn btn-sm <?= ((int)($domain["ssl_force_https"] ?? 0) === 1) ? 'btn-success' : 'btn-outline-secondary' ?> text-uppercase fw-bold text-nowrap">
+                <i class="bi <?= ((int)($domain["ssl_force_https"] ?? 0) === 1) ? 'bi-check-circle-fill' : 'bi-slash-circle' ?> me-1"></i>
+                <?= ((int)($domain["ssl_force_https"] ?? 0) === 1) ? 'HTTPS Forzado Activo' : 'Forzar HTTPS' ?>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 pt-2 border-top">
+          <form action="/mail/webmail/ssl/issue/<?= $domain["id"] ?>" method="POST" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-primary text-uppercase fw-bold">
+              <i class="bi bi-arrow-repeat me-1"></i> Renovar Certificado SSL
+            </button>
+          </form>
+          <form action="/mail/webmail/ssl/delete/<?= $domain["id"] ?>" method="POST" class="d-inline" onsubmit="return confirm('Seguro que deseas eliminar el certificado SSL de webmail.<?= $domain["domain_name"] ?>?');">
+            <button type="submit" class="btn btn-sm btn-outline-danger text-uppercase fw-bold">
+              <i class="bi bi-trash me-1"></i> Eliminar SSL
+            </button>
+          </form>
+        </div>
+
+      <?php else: ?>
+        <p class="small text-muted mb-3">
+          Genera un certificado SSL oficial y gratuito de <strong>Let's Encrypt</strong> para cifrar las conexiones a Webmail mediante HTTPS.
+        </p>
+
+        <form action="/mail/webmail/ssl/issue/<?= $domain["id"] ?>" method="POST">
+          <div class="mb-3">
+            <label for="ssl_email" class="form-label">Correo para Notificaciones de Renovación (Opcional)</label>
+            <input type="email" class="form-control" id="ssl_email" name="ssl_email" placeholder="admin@<?= $domain["domain_name"] ?>">
+          </div>
+
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="ssl_force_https" name="ssl_force_https" value="1" checked>
+            <label class="form-check-label" for="ssl_force_https">
+              Forzar redirección automática de HTTP a HTTPS
+            </label>
+          </div>
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary text-uppercase fw-bold">
+              <i class="bi bi-shield-lock-fill me-1"></i> Generar Certificado Let's Encrypt
+            </button>
+          </div>
+        </form>
+      <?php endif; ?>
     </div>
   </div>
 
-  <div class="col-md-6">
-    <div class="bg-body p-3 rounded h-100">
+  <div class="col-lg-6">
+    <div class="bg-body p-3 rounded mb-3">
       <h6 class="fw-bold mb-3">
-        <i class="bi bi-phone me-1"></i> Configuracion para Outlook, Thunderbird y Moviles
+        <i class="bi bi-phone me-1"></i> Configuración para Clientes de Correo
       </h6>
 
       <table class="table table-sm table-borderless small mb-0">
@@ -550,7 +658,7 @@ function copyAllDnsRecords() {
             <td><span class="badge bg-secondary font-monospace">465 (SSL/TLS)</span> o <span class="badge bg-secondary font-monospace">587 (STARTTLS)</span></td>
           </tr>
           <tr>
-            <td class="fw-bold text-primary pt-2" colspan="2">Autenticacion Requerida:</td>
+            <td class="fw-bold text-primary pt-2" colspan="2">Autenticación Requerida:</td>
           </tr>
           <tr>
             <td class="text-muted ps-3">Usuario:</td>
@@ -558,6 +666,33 @@ function copyAllDnsRecords() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="bg-body p-3 rounded">
+      <h6 class="fw-bold mb-3">
+        <i class="bi bi-globe me-1"></i> Requisito DNS para Webmail SSL
+      </h6>
+      <p class="small text-muted mb-2">
+        Para que Let's Encrypt pueda emitir el certificado SSL, el subdominio <code>webmail.<?= $domain["domain_name"] ?></code> debe apuntar a la IP de este servidor:
+      </p>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered small font-monospace mb-0">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Nombre / Host</th>
+              <th>Valor / Destino</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge bg-primary">A</span></td>
+              <td><code>webmail.<?= $domain["domain_name"] ?></code></td>
+              <td><code><?= $dnsInfo["server_ip"] ?></code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>

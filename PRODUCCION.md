@@ -437,8 +437,9 @@ PiruluGCP cuenta con comandos CLI ubicados en `/usr/local/pirulugcp/engine/bin/`
 | `pirulu-server issue-panel-ssl <subdominio> [email] [force_https]` | Emite e instala un certificado SSL Let's Encrypt para el subdominio de acceso al panel. |
 | `pirulu-server delete-panel-ssl <subdominio>` | Elimina el certificado SSL del panel y revierte el acceso a HTTP. |
 | `pirulu-db create <nombre_bd> <usuario> <password>` | Crea una base de datos MariaDB con usuario y privilegios. |
-| `pirulu-php list` | Lista todas las versiones de PHP instaladas y activas. |
-| `pirulu-mail add-domain <dominio>` | Configura el stack de correo para un dominio especifico. |
+| `pirulu-mail domain-add <dominio> [usuario]` | Configura el stack de correo y VirtualHost de Webmail para un dominio. |
+| `pirulu-mail webmail-ssl-issue <dominio> [email] [force_https]` | Emite e instala un certificado SSL Let's Encrypt para `webmail.<dominio>`. |
+| `pirulu-mail webmail-ssl-delete <dominio>` | Elimina el certificado SSL de `webmail.<dominio>` y revierte a HTTP. |
 | `pirulu-ftp account-add <user> <pass> <sys_user> <domain> [path]` | Crea una cuenta de acceso FTP virtual para un dominio. |
 | `pirulu-ftp status` | Verifica el estado del servicio vsftpd. |
 

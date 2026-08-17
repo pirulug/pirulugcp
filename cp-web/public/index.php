@@ -130,6 +130,9 @@ $router->post("/mail/account/quota", [MailController::class, "updateQuota"]);
 $router->get("/mail/account/delete/{id}", [MailController::class, "deleteAccount"]);
 $router->post("/mail/forwarder/create/{id}", [MailController::class, "createForwarder"]);
 $router->get("/mail/forwarder/delete/{id}", [MailController::class, "deleteForwarder"]);
+$router->post("/mail/webmail/ssl/issue/{id}", [MailController::class, "issueWebmailSsl"]);
+$router->post("/mail/webmail/ssl/delete/{id}", [MailController::class, "deleteWebmailSsl"]);
+$router->post("/mail/webmail/ssl/force-https/{id}", [MailController::class, "toggleWebmailForceHttps"]);
 
 // Rutas de Dominios Web (Nginx / Apache)
 $router->get("/web", [WebController::class, "index"]);

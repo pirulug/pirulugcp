@@ -122,8 +122,9 @@
               </td>
               <td>
                 <?php if ($hasMail): ?>
-                  <a href="http://webmail.<?= $d["domain_name"] ?>" target="_blank" class="small fw-bold text-decoration-none">
-                    <i class="bi bi-box-arrow-up-right me-1"></i> webmail.<?= $d["domain_name"] ?>
+                  <?php $isWebmailSsl = (!empty($d["ssl_enabled"]) && (int)$d["ssl_enabled"] === 1); ?>
+                  <a href="<?= $isWebmailSsl ? 'https' : 'http' ?>://webmail.<?= $d["domain_name"] ?>" target="_blank" class="small fw-bold text-decoration-none <?= $isWebmailSsl ? 'text-success' : '' ?>">
+                    <i class="bi <?= $isWebmailSsl ? 'bi-shield-lock-fill text-success' : 'bi-box-arrow-up-right' ?> me-1"></i> webmail.<?= $d["domain_name"] ?>
                   </a>
                 <?php else: ?>
                   <span class="text-muted small">-</span>

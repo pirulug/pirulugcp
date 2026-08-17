@@ -22,7 +22,7 @@ NGINX_SITES_ENAB="/etc/nginx/sites-enabled"
 WEBMAIL_TPL="${SCRIPT_DIR}/../templates/nginx/webmail.conf.tpl"
 
 usage() {
-    echo "Uso: pirulu-mail <domain-add|domain-del|account-add|account-del|account-passwd|account-quota|forwarder-add|forwarder-del|dkim-get|status> [params...]"
+    echo "Uso: pirulu-mail <domain-add|domain-del|webmail-ssl-issue|webmail-ssl-delete|webmail-vhost|account-add|account-del|account-passwd|account-quota|forwarder-add|forwarder-del|dkim-get|status> [params...]"
     exit 1
 }
 
@@ -107,20 +107,7 @@ mail_domain_add() {
     fi
     chown -R www-data:www-data /var/lib/roundcube /var/log/roundcube /etc/roundcube 2>/dev/null || true
 
-    local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
-    if [ -f "$WEBMAIL_TPL" ]; then
-        sed "s/%DOMAIN%/${domain}/g" "$WEBMAIL_TPL" > "$webmail_conf"
-        ln -sf "$webmail_conf" "${NGINX_SITES_ENAB}/webmail.${domain}.conf"
-    fi
-
-    # Agregar entrada en /etc/hosts si no existe
-    if ! grep -qw "webmail.${domain}" /etc/hosts 2>/dev/null; then
-        echo "127.0.0.1 webmail.${domain}" >> /etc/hosts
-    fi
-
-    if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx 2>/dev/null || true
-    fi
+    build_webmail_vhost "$domain" "0"
 
     systemctl reload-or-restart exim4 2>/dev/null || true
     systemctl reload-or-restart dovecot 2>/dev/null || true
@@ -133,6 +120,234 @@ mail_domain_add() {
     local dkim_record="v=DKIM1; k=rsa; p=${dkim_key_raw}"
 
     echo "{\"status\":\"success\",\"message\":\"Servicio de correo habilitado para $domain\",\"domain\":\"$(json_escape "$domain")\",\"webmail_url\":\"http://webmail.${domain}\",\"spf_record\":\"$(json_escape "$spf_record")\",\"dkim_selector\":\"default\",\"dkim_record\":\"$(json_escape "$dkim_record")\"}"
+}
+
+build_webmail_vhost() {
+    local domain="$1"
+    local force_https="${2:-0}"
+    local webmail_conf="${NGINX_SITES_AVAIL}/webmail.${domain}.conf"
+    local webmail_host="webmail.${domain}"
+    local rc_root="/usr/share/roundcube"
+    [ ! -d "$rc_root" ] && rc_root="/var/lib/roundcube/public_html"
+
+    local sock_file="/run/php/pirulugcp-panel.sock"
+    [ ! -S "$sock_file" ] && sock_file=$(find /run/php/ -name "php*-fpm.sock" 2>/dev/null | head -n 1)
+
+    local cert_file="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+    local key_file="/etc/ssl/private/ssl-cert-snakeoil.key"
+    local has_ssl=false
+
+    if [ -f "/etc/letsencrypt/live/${webmail_host}/fullchain.pem" ]; then
+        cert_file="/etc/letsencrypt/live/${webmail_host}/fullchain.pem"
+        key_file="/etc/letsencrypt/live/${webmail_host}/privkey.pem"
+        has_ssl=true
+    elif [ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ] && openssl x509 -noout -text -in "/etc/letsencrypt/live/${domain}/fullchain.pem" 2>/dev/null | grep -q "DNS:${webmail_host}"; then
+        cert_file="/etc/letsencrypt/live/${domain}/fullchain.pem"
+        key_file="/etc/letsencrypt/live/${domain}/privkey.pem"
+        has_ssl=true
+    else
+        if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+            mkdir -p /etc/ssl/certs /etc/ssl/private
+            openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+                -keyout "$key_file" \
+                -out "$cert_file" \
+                -subj "/CN=${webmail_host}" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    if [ "$force_https" = "1" ] && [ "$has_ssl" = true ]; then
+        cat <<EOF > "$webmail_conf"
+# VirtualHost de Nginx para Webmail de ${domain} con redireccion forzada a HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    listen 8083;
+    listen [::]:8083;
+    server_name ${webmail_host};
+
+    location /.well-known/acme-challenge/ {
+        root ${rc_root};
+        try_files \$uri =404;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+EOF
+    else
+        cat <<EOF > "$webmail_conf"
+# VirtualHost de Nginx para Webmail de ${domain} en HTTP (Puerto 80 y 8083)
+server {
+    listen 80;
+    listen [::]:80;
+    listen 8083;
+    listen [::]:8083;
+    server_name ${webmail_host};
+
+    root ${rc_root};
+    index index.php index.html;
+
+    client_max_body_size 64M;
+
+    location /.well-known/acme-challenge/ {
+        root ${rc_root};
+        try_files \$uri =404;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~ ^/(README|INSTALL|LICENSE|CHANGELOG|UPGRADING)$ {
+        deny all;
+    }
+
+    location ~ ^/(bin|SQL|config|temp|logs)/ {
+        deny all;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:${sock_file};
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_index index.php;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    access_log /var/log/nginx/webmail_${domain}_access.log;
+    error_log /var/log/nginx/webmail_${domain}_error.log;
+}
+EOF
+    fi
+
+    cat <<EOF >> "$webmail_conf"
+
+# VirtualHost de Nginx para Webmail de ${domain} en HTTPS (Puerto 443)
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${webmail_host};
+
+    root ${rc_root};
+    index index.php index.html;
+
+    ssl_certificate ${cert_file};
+    ssl_certificate_key ${key_file};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    client_max_body_size 64M;
+
+    location /.well-known/acme-challenge/ {
+        root ${rc_root};
+        try_files \$uri =404;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~ ^/(README|INSTALL|LICENSE|CHANGELOG|UPGRADING)$ {
+        deny all;
+    }
+
+    location ~ ^/(bin|SQL|config|temp|logs)/ {
+        deny all;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:${sock_file};
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_index index.php;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    access_log /var/log/nginx/webmail_${domain}_access.log;
+    error_log /var/log/nginx/webmail_${domain}_error.log;
+}
+EOF
+
+    ln -sf "$webmail_conf" "${NGINX_SITES_ENAB}/webmail.${domain}.conf"
+
+    if ! grep -qw "${webmail_host}" /etc/hosts 2>/dev/null; then
+        echo "127.0.0.1 ${webmail_host}" >> /etc/hosts
+    fi
+
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx 2>/dev/null || true
+    fi
+}
+
+mail_webmail_ssl_issue() {
+    local domain="$1"
+    local email="$2"
+    local force_https="${3:-0}"
+
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+    domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+    local webmail_host="webmail.${domain}"
+    local rc_root="/usr/share/roundcube"
+    [ ! -d "$rc_root" ] && rc_root="/var/lib/roundcube/public_html"
+
+    log_info "Iniciando expedicion de certificado Let's Encrypt para: $webmail_host"
+
+    mkdir -p "${rc_root}/.well-known/acme-challenge"
+    chown -R www-data:www-data "${rc_root}/.well-known" 2>/dev/null || true
+    chmod -R 755 "${rc_root}/.well-known" 2>/dev/null || true
+
+    # Asegurar vhost de Nginx configurado sin redireccion forzada previa
+    build_webmail_vhost "$domain" "0"
+
+    local email_opt="--register-unsafely-without-email"
+    if [ -n "$email" ]; then
+        email_opt="--email $email --no-eff-email"
+    fi
+
+    local certbot_output
+    certbot_output=$(certbot certonly --webroot \
+        -w "$rc_root" \
+        -d "$webmail_host" \
+        --non-interactive \
+        --agree-tos \
+        $email_opt 2>&1)
+
+    if [ ! -f "/etc/letsencrypt/live/${webmail_host}/fullchain.pem" ]; then
+        log_error "Fallo al emitir certificado Let's Encrypt para $webmail_host: $certbot_output"
+        echo "{\"status\":\"error\",\"message\":\"No se pudo emitir el certificado Let's Encrypt para $webmail_host. Verifica que el registro DNS A de webmail apunte a este servidor.\",\"log\":\"$(json_escape "$certbot_output")\"}"
+        exit 1
+    fi
+
+    build_webmail_vhost "$domain" "$force_https"
+
+    log_info "Certificado Let's Encrypt instalado y activado para $webmail_host"
+    echo "{\"status\":\"success\",\"message\":\"Certificado Let's Encrypt instalado correctamente para $webmail_host\",\"domain\":\"$(json_escape "$domain")\",\"webmail_host\":\"$(json_escape "$webmail_host")\"}"
+}
+
+mail_webmail_ssl_delete() {
+    local domain="$1"
+    [ -z "$domain" ] && exit_error "Dominio requerido"
+    domain=$(echo "$domain" | tr -cd 'a-zA-Z0-9.-' | tr '[:upper:]' '[:lower:]')
+    local webmail_host="webmail.${domain}"
+
+    log_info "Eliminando certificado SSL Let's Encrypt para: $webmail_host"
+
+    certbot delete --cert-name "$webmail_host" --non-interactive >/dev/null 2>&1 || true
+
+    build_webmail_vhost "$domain" "0"
+
+    echo "{\"status\":\"success\",\"message\":\"Certificado SSL de Webmail removido exitosamente\",\"domain\":\"$(json_escape "$domain")\"}"
 }
 
 mail_domain_del() {
@@ -370,6 +585,16 @@ case "$ACTION" in
         ;;
     dkim-get)
         mail_dkim_get "$PARAM1"
+        ;;
+    webmail-ssl-issue)
+        mail_webmail_ssl_issue "$PARAM1" "$PARAM2" "$PARAM3"
+        ;;
+    webmail-ssl-delete)
+        mail_webmail_ssl_delete "$PARAM1"
+        ;;
+    webmail-vhost)
+        build_webmail_vhost "$PARAM1" "$PARAM2"
+        echo "{\"status\":\"success\",\"message\":\"VirtualHost de Webmail actualizado\"}"
         ;;
     status)
         mail_status
